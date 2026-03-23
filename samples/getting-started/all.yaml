@@ -833,7 +833,7 @@ spec:
       properties:
         schedule:
           type: string
-          default: "0 0 31 2 *"
+          default: "1 * * * *"
         resources:
           $ref: "#/$defs/ResourceRequirements"
         imagePullPolicy:
