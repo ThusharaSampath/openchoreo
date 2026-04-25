@@ -21,8 +21,9 @@ type SearchResponse struct {
 		} `json:"total"`
 		Hits []Hit `json:"hits"`
 	} `json:"hits"`
-	Took     int  `json:"took"`
-	TimedOut bool `json:"timed_out"`
+	Aggregations map[string]json.RawMessage `json:"aggregations,omitempty"`
+	Took         int                        `json:"took"`
+	TimedOut     bool                       `json:"timed_out"`
 }
 
 // Hit represents a single search result hit
@@ -175,6 +176,29 @@ type ComponentLogsQueryParamsV1 struct {
 	LogLevels     []string `json:"logLevels,omitempty"`
 	Limit         int      `json:"limit"`
 	SortOrder     string   `json:"sortOrder"`
+	PodName       string   `json:"podName,omitempty"` // Optional: filter logs to a specific pod
+}
+
+// TriggersQueryParams holds parameters for querying triggers (Jobs) from kube-events index
+type TriggersQueryParams struct {
+	StartTime     string
+	EndTime       string
+	NamespaceName string
+	ComponentID   string
+	EnvironmentID string
+	ProjectID     string
+	Limit         int
+	Offset        int
+	SortOrder     string
+}
+
+// RetriesQueryParams holds parameters for querying retries (Pods) for a specific trigger
+type RetriesQueryParams struct {
+	JobName       string
+	NamespaceName string
+	ComponentID   string
+	EnvironmentID string
+	ProjectID     string
 }
 
 // buildSearchBody converts a query map to an io.Reader for the search request

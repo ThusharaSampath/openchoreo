@@ -32,6 +32,14 @@ func (f *fakeScopeAuthFailedLogsService) QueryLogs(_ context.Context, _ *types.L
 	return nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed)
 }
 
+func (f *fakeScopeAuthFailedLogsService) QueryTriggers(_ context.Context, _ *types.TriggersQueryRequest) (*types.TriggersQueryResponse, error) {
+	return nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed)
+}
+
+func (f *fakeScopeAuthFailedLogsService) QueryRetries(_ context.Context, _ string, _ *types.RetriesQueryRequest) (*types.RetriesQueryResponse, error) {
+	return nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed)
+}
+
 type fakeScopeAuthFailedMetricsService struct{}
 
 func (f *fakeScopeAuthFailedMetricsService) QueryMetrics(_ context.Context, _ *types.MetricsQueryRequest) (any, error) {

@@ -1024,6 +1024,15 @@ func (qb *QueryBuilder) BuildComponentLogsQueryV1(params ComponentLogsQueryParam
 		mustConditions = append(mustConditions, environmentFilter)
 	}
 
+	if params.PodName != "" {
+		podFilter := map[string]interface{}{
+			"term": map[string]interface{}{
+				labels.KubernetesPodName: params.PodName,
+			},
+		}
+		mustConditions = append(mustConditions, podFilter)
+	}
+
 	// Add common filters
 	mustConditions = addSearchPhraseFilter(mustConditions, params.SearchPhrase)
 	mustConditions = addLogLevelFilter(mustConditions, params.LogLevels)
@@ -1051,6 +1060,156 @@ func (qb *QueryBuilder) BuildComponentLogsQueryV1(params ComponentLogsQueryParam
 			{
 				"@timestamp": map[string]interface{}{
 					"order": sortOrder,
+				},
+			},
+		},
+	}
+
+	return query, nil
+}
+
+// BuildTriggersQuery builds an OpenSearch aggregation query to list triggers (Jobs) for a scheduled task component.
+// It queries the kube-events index, filtering by involvedObject.kind=Job and OpenChoreo labels,
+// then aggregates by involvedObject.name (Job name) to produce a list of triggers.
+func (qb *QueryBuilder) BuildTriggersQuery(params TriggersQueryParams) (map[string]interface{}, error) {
+	if params.StartTime == "" || params.EndTime == "" {
+		return nil, fmt.Errorf("start time and end time are required")
+	}
+	if params.ComponentID == "" || params.EnvironmentID == "" {
+		return nil, fmt.Errorf("component ID and environment ID are required")
+	}
+
+	mustConditions := []map[string]interface{}{
+		{"term": map[string]interface{}{"involvedObject.kind": "Job"}},
+		{"term": map[string]interface{}{"involvedObject.labels.openchoreo.dev/component-uid": params.ComponentID}},
+		{"term": map[string]interface{}{"involvedObject.labels.openchoreo.dev/environment-uid": params.EnvironmentID}},
+	}
+
+	mustConditions = addTimeRangeFilter(mustConditions, params.StartTime, params.EndTime)
+
+	if params.ProjectID != "" {
+		mustConditions = append(mustConditions, map[string]interface{}{
+			"term": map[string]interface{}{"involvedObject.labels.openchoreo.dev/project-uid": params.ProjectID},
+		})
+	}
+
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+
+	sortOrder := params.SortOrder
+	if sortOrder == "" {
+		sortOrder = "desc"
+	}
+
+	query := map[string]interface{}{
+		"size": 0,
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": mustConditions,
+			},
+		},
+		"aggs": map[string]interface{}{
+			"triggers": map[string]interface{}{
+				"terms": map[string]interface{}{
+					"field": "involvedObject.name",
+					"size":  limit + params.Offset,
+					"order": map[string]interface{}{
+						"first_seen": sortOrder,
+					},
+				},
+				"aggs": map[string]interface{}{
+					"first_seen": map[string]interface{}{
+						"min": map[string]interface{}{"field": "@timestamp"},
+					},
+					"last_seen": map[string]interface{}{
+						"max": map[string]interface{}{"field": "@timestamp"},
+					},
+					"reasons": map[string]interface{}{
+						"terms": map[string]interface{}{"field": "reason", "size": 20},
+					},
+					"events": map[string]interface{}{
+						"top_hits": map[string]interface{}{
+							"size": 10,
+							"sort": []map[string]interface{}{
+								{"@timestamp": map[string]interface{}{"order": "asc"}},
+							},
+							"_source": []string{"reason", "message", "@timestamp", "type"},
+						},
+					},
+				},
+			},
+			"total_triggers": map[string]interface{}{
+				"cardinality": map[string]interface{}{
+					"field": "involvedObject.name",
+				},
+			},
+		},
+	}
+
+	return query, nil
+}
+
+// BuildRetriesQuery builds an OpenSearch aggregation query to list retries (Pods) for a specific trigger (Job).
+// It queries the kube-events index for Pod events whose name matches the job name prefix.
+func (qb *QueryBuilder) BuildRetriesQuery(params RetriesQueryParams) (map[string]interface{}, error) {
+	if params.JobName == "" {
+		return nil, fmt.Errorf("job name is required")
+	}
+
+	mustConditions := []map[string]interface{}{
+		{"term": map[string]interface{}{"involvedObject.kind": "Pod"}},
+		{"wildcard": map[string]interface{}{
+			"involvedObject.name": map[string]interface{}{
+				"value": params.JobName + "-*",
+			},
+		}},
+	}
+
+	if params.ComponentID != "" {
+		mustConditions = append(mustConditions, map[string]interface{}{
+			"term": map[string]interface{}{"involvedObject.labels.openchoreo.dev/component-uid": params.ComponentID},
+		})
+	}
+	if params.EnvironmentID != "" {
+		mustConditions = append(mustConditions, map[string]interface{}{
+			"term": map[string]interface{}{"involvedObject.labels.openchoreo.dev/environment-uid": params.EnvironmentID},
+		})
+	}
+
+	query := map[string]interface{}{
+		"size": 0,
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": mustConditions,
+			},
+		},
+		"aggs": map[string]interface{}{
+			"retries": map[string]interface{}{
+				"terms": map[string]interface{}{
+					"field": "involvedObject.name",
+					"size":  20,
+					"order": map[string]interface{}{
+						"first_seen": "asc",
+					},
+				},
+				"aggs": map[string]interface{}{
+					"first_seen": map[string]interface{}{
+						"min": map[string]interface{}{"field": "@timestamp"},
+					},
+					"reasons": map[string]interface{}{
+						"terms": map[string]interface{}{"field": "reason", "size": 20},
+					},
+					"events": map[string]interface{}{
+						"top_hits": map[string]interface{}{
+							"size": 10,
+							"sort": []map[string]interface{}{
+								{"@timestamp": map[string]interface{}{"order": "asc"}},
+							},
+							"_source": []string{"reason", "message", "@timestamp", "type"},
+						},
+					},
 				},
 			},
 		},

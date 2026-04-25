@@ -141,6 +141,24 @@ Cluster Agent service account name
 {{- end }}
 
 {{/*
+Kube Events Collector name
+*/}}
+{{- define "openchoreo-data-plane.kubeEventsCollector.name" -}}
+{{- default "kube-events-collector" .Values.kubeEventsCollector.name }}
+{{- end }}
+
+{{/*
+Kube Events Collector service account name
+*/}}
+{{- define "openchoreo-data-plane.kubeEventsCollector.serviceAccountName" -}}
+{{- if .Values.kubeEventsCollector.serviceAccount.create }}
+{{- default "kube-events-collector" .Values.kubeEventsCollector.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.kubeEventsCollector.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
 Validate that placeholder .invalid hostnames have been replaced with real domains.
 */}}
 {{- define "openchoreo-data-plane.validateHostnames" -}}

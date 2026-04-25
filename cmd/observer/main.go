@@ -275,6 +275,10 @@ func main() {
 	api.HandleFunc("POST /api/v1/logs/query", newAPIHandler.QueryLogs)
 	api.HandleFunc("POST /api/v1/metrics/query", newAPIHandler.QueryMetrics)
 
+	// ===== Scheduled Task Triggers API (v1) =====
+	api.HandleFunc("POST /api/v1/scheduled-tasks/triggers/query", newAPIHandler.QueryTriggers)
+	api.HandleFunc("POST /api/v1/scheduled-tasks/triggers/{jobName}/retries/query", newAPIHandler.QueryRetries)
+
 	// ===== New API Routes (v1alpha1) - Traces & Incidents =====
 	api.HandleFunc("POST /api/v1alpha1/traces/query", newAPIHandler.QueryTraces)
 	api.HandleFunc("POST /api/v1alpha1/traces/{traceId}/spans/query", newAPIHandler.QuerySpansForTrace)
@@ -327,6 +331,19 @@ func main() {
 
 	// ===== v1alpha1 Alert Webhook Endpoint  =====
 	internalRoutes.HandleFunc("POST /api/v1alpha1/alerts/webhook", internalHandler.HandleAlertWebhook)
+
+	// ===== Internal Trigger Routes (no auth, for testing) =====
+	noAuthHandler := apihandler.NewHandler(
+		healthService,
+		logsService, // unwrapped, no authz
+		metricsService,
+		alertService,
+		tracesService,
+		logger.With("component", "internal-api-handler"),
+	)
+	internalRoutes.HandleFunc("POST /api/v1/scheduled-tasks/triggers/query", noAuthHandler.QueryTriggers)
+	internalRoutes.HandleFunc("POST /api/v1/scheduled-tasks/triggers/{jobName}/retries/query", noAuthHandler.QueryRetries)
+	internalRoutes.HandleFunc("POST /api/v1/logs/query", noAuthHandler.QueryLogs)
 
 	internalAddr := fmt.Sprintf(":%d", cfg.Server.InternalPort)
 	internalServer := &http.Server{

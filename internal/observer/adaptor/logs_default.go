@@ -67,6 +67,7 @@ func (a *DefaultLogsAdaptor) GetComponentApplicationLogs(
 		LogLevels:     params.LogLevels,
 		Limit:         params.Limit,
 		SortOrder:     params.SortOrder,
+		PodName:       params.PodName,
 	}
 
 	// Generate indices based on time range
@@ -211,4 +212,14 @@ func (a *DefaultLogsAdaptor) GetWorkflowLogs(
 		TotalCount: min(response.Hits.Total.Value, config.MaxLimit),
 		Took:       response.Took,
 	}, nil
+}
+
+// SearchRaw executes a raw OpenSearch query against the given indices and returns the response.
+// This is used by the trigger/retry service to query the kube-events index with aggregations.
+func (a *DefaultLogsAdaptor) SearchRaw(
+	ctx context.Context,
+	indices []string,
+	query map[string]interface{},
+) (*opensearch.SearchResponse, error) {
+	return a.osClient.Search(ctx, indices, query)
 }

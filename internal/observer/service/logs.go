@@ -67,6 +67,7 @@ type internalSearchScope struct {
 	ProjectUID     string
 	ComponentUID   string
 	EnvironmentUID string
+	PodName        string // Optional: filter logs to a specific pod
 
 	// For workflow scope
 	WorkflowRunName string
@@ -141,6 +142,7 @@ func (s *LogsService) queryComponentLogs(
 		LogLevels:     req.LogLevels,
 		Limit:         req.Limit,
 		SortOrder:     req.SortOrder,
+		PodName:       scope.PodName,
 	}
 
 	var result *observability.ComponentApplicationLogsResult
@@ -388,6 +390,7 @@ func (s *LogsService) resolveSearchScope(ctx context.Context, searchScope *types
 			ProjectUID:      projectUID,
 			ComponentUID:    componentUID,
 			EnvironmentUID:  environmentUID,
+			PodName:         scope.PodName,
 			IsWorkflowScope: false,
 		}, nil
 	}

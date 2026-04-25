@@ -174,10 +174,100 @@ rcaReportsIndexTemplate='
 }'
 # TODO: "openchoreo.dev/organization-uid": should be removed or refactored
 
+# Template for indices which hold enriched Kubernetes Events
+kubeEventsIndexTemplate='
+{
+  "index_patterns": [
+    "kube-events-*"
+  ],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 1
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "firstTimestamp": {
+          "type": "date"
+        },
+        "lastTimestamp": {
+          "type": "date"
+        },
+        "reason": {
+          "type": "keyword"
+        },
+        "message": {
+          "type": "text"
+        },
+        "type": {
+          "type": "keyword"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "source": {
+          "properties": {
+            "component": {
+              "type": "keyword"
+            }
+          }
+        },
+        "involvedObject": {
+          "properties": {
+            "apiVersion": {
+              "type": "keyword"
+            },
+            "kind": {
+              "type": "keyword"
+            },
+            "name": {
+              "type": "keyword"
+            },
+            "namespace": {
+              "type": "keyword"
+            },
+            "uid": {
+              "type": "keyword"
+            },
+            "labels": {
+              "properties": {
+                "openchoreo.dev/component-uid": {
+                  "type": "keyword"
+                },
+                "openchoreo.dev/environment-uid": {
+                  "type": "keyword"
+                },
+                "openchoreo.dev/project-uid": {
+                  "type": "keyword"
+                },
+                "openchoreo.dev/component": {
+                  "type": "keyword"
+                },
+                "openchoreo.dev/environment": {
+                  "type": "keyword"
+                },
+                "openchoreo.dev/project": {
+                  "type": "keyword"
+                },
+                "openchoreo.dev/namespace": {
+                  "type": "keyword"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}'
+
 # The following array holds pairs of index template names and their definitions. Define more templates above
 # and add them to this array.
 # Format: (templateName1 templateDefinition1 templateName2 templateDefinition2 ...)
-indexTemplates=("container-logs" "containerLogsIndexTemplate" "otel-traces" "otelTracesIndexTemplate" "rca-reports" "rcaReportsIndexTemplate")
+indexTemplates=("container-logs" "containerLogsIndexTemplate" "otel-traces" "otelTracesIndexTemplate" "rca-reports" "rcaReportsIndexTemplate" "kube-events" "kubeEventsIndexTemplate")
 
 # Create index templates through a loop using the above array
 echo "Creating index templates..."
@@ -396,9 +486,48 @@ rcaReportsIsmPolicy='{
   }
 }'
 
+# Kube events
+kubeEventsRetention="${KUBE_EVENTS_MIN_INDEX_AGE:-30d}"
+
+kubeEventsIsmPolicy='{
+  "policy": {
+    "description": "Delete kube events older than '"$kubeEventsRetention"'",
+    "default_state": "active",
+    "states": [
+      {
+        "name": "active",
+        "actions": [],
+        "transitions": [
+          {
+            "state_name": "delete",
+            "conditions": {
+              "min_index_age": "'"$kubeEventsRetention"'"
+            }
+          }
+        ]
+      },
+      {
+        "name": "delete",
+        "actions": [
+          {
+            "delete": {}
+          }
+        ],
+        "transitions": []
+      }
+    ],
+    "ism_template": [
+      {
+        "index_patterns": ["kube-events-*"],
+        "priority": 100
+      }
+    ]
+  }
+}'
+
 # Array to hold policy names and their definitions
 # Format: (ismPolicyName1 ismPolicyDefinition1 ismPolicyName2 ismPolicyDefinition2 ...)
-ismPolicies=("container-logs" "containerLogsIsmPolicy" "otel-traces" "otelTracesIsmPolicy" "rca-reports" "rcaReportsIsmPolicy")
+ismPolicies=("container-logs" "containerLogsIsmPolicy" "otel-traces" "otelTracesIsmPolicy" "rca-reports" "rcaReportsIsmPolicy" "kube-events" "kubeEventsIsmPolicy")
 
 # Function to normalize JSON for comparison (removes whitespace differences)
 normalize_json() {

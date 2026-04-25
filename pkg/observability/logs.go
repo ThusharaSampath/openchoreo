@@ -26,6 +26,7 @@ type ComponentApplicationLogsParams struct {
 	VersionIDs    []string  `json:"versionIds"`
 	Limit         int       `json:"limit"`
 	SortOrder     string    `json:"sortOrder"`
+	PodName       string    `json:"podName,omitempty"` // Optional: filter logs to a specific pod
 }
 
 // WorkflowLogsParams holds parameters for workflow log queries

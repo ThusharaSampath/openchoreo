@@ -1,0 +1,18 @@
+{{- if and .Values.kubeEventsCollector.enabled .Values.kubeEventsCollector.checkpoint.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "openchoreo-data-plane.kubeEventsCollector.name" . }}-checkpoint
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openchoreo-data-plane.componentLabels" (dict "context" . "component" "kube-events-collector") | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.kubeEventsCollector.checkpoint.persistence.size }}
+  {{- with .Values.kubeEventsCollector.checkpoint.persistence.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+{{- end }}

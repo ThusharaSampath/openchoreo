@@ -81,3 +81,15 @@ registries:
       "host.k3d.internal:10082":
         endpoint:
           - http://host.k3d.internal:10082
+      "ghcr.io":
+        endpoint:
+          - http://host.k3d.internal:5601
+      "docker.io":
+        endpoint:
+          - http://host.k3d.internal:5602
+      "quay.io":
+        endpoint:
+          - http://host.k3d.internal:5603
+      "cr.kgateway.dev":
+        endpoint:
+          - http://host.k3d.internal:5604

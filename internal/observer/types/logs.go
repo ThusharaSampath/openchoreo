@@ -15,6 +15,12 @@ type ComponentSearchScope struct {
 	Project     string `json:"project,omitempty"`
 	Component   string `json:"component,omitempty"`
 	Environment string `json:"environment,omitempty"`
+	PodName     string `json:"podName,omitempty"` // Optional: filter logs to a specific pod (retry)
+
+	// Direct UID fields — if set, skip UID resolution (useful for internal/testing calls)
+	ComponentUID   string `json:"componentUid,omitempty"`
+	EnvironmentUID string `json:"environmentUid,omitempty"`
+	ProjectUID     string `json:"projectUid,omitempty"`
 }
 
 // WorkflowSearchScope defines the search scope for workflow run logs

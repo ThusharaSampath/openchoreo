@@ -42,3 +42,42 @@ func (s *logsServiceWithAuthz) QueryLogs(ctx context.Context, req *types.LogsQue
 	}
 	return s.internal.QueryLogs(ctx, req)
 }
+
+func (s *logsServiceWithAuthz) QueryTriggers(ctx context.Context, req *types.TriggersQueryRequest) (*types.TriggersQueryResponse, error) {
+	// Reuse the same authorization check as logs: user must have ViewLogs permission
+	logsReq := &types.LogsQueryRequest{
+		SearchScope: &types.SearchScope{Component: req.SearchScope},
+		StartTime:   req.StartTime,
+		EndTime:     req.EndTime,
+	}
+	resourceType, resourceName, hierarchy, err := observerAuthz.LogsScopeAuthz(logsReq)
+	if err != nil {
+		return nil, err
+	}
+	if err := observerAuthz.CheckAuthorization(
+		ctx, s.logger, s.pdp,
+		observerAuthz.ActionViewLogs,
+		resourceType, resourceName, hierarchy,
+	); err != nil {
+		return nil, err
+	}
+	return s.internal.QueryTriggers(ctx, req)
+}
+
+func (s *logsServiceWithAuthz) QueryRetries(ctx context.Context, jobName string, req *types.RetriesQueryRequest) (*types.RetriesQueryResponse, error) {
+	logsReq := &types.LogsQueryRequest{
+		SearchScope: &types.SearchScope{Component: req.SearchScope},
+	}
+	resourceType, resourceName, hierarchy, err := observerAuthz.LogsScopeAuthz(logsReq)
+	if err != nil {
+		return nil, err
+	}
+	if err := observerAuthz.CheckAuthorization(
+		ctx, s.logger, s.pdp,
+		observerAuthz.ActionViewLogs,
+		resourceType, resourceName, hierarchy,
+	); err != nil {
+		return nil, err
+	}
+	return s.internal.QueryRetries(ctx, jobName, req)
+}

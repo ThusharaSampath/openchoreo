@@ -10,9 +10,11 @@ import (
 	"github.com/openchoreo/openchoreo/internal/observer/types"
 )
 
-// LogsQuerier is the interface for querying logs.
+// LogsQuerier is the interface for querying logs and scheduled task triggers.
 type LogsQuerier interface {
 	QueryLogs(ctx context.Context, req *types.LogsQueryRequest) (*types.LogsQueryResponse, error)
+	QueryTriggers(ctx context.Context, req *types.TriggersQueryRequest) (*types.TriggersQueryResponse, error)
+	QueryRetries(ctx context.Context, jobName string, req *types.RetriesQueryRequest) (*types.RetriesQueryResponse, error)
 }
 
 // MetricsQuerier is the interface for querying metrics.

@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-events-collector
+  namespace: openchoreo-data-plane
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-events-collector
+rules:
+  - apiGroups: [""]
+    resources: ["events", "pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-events-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-events-collector
+subjects:
+  - kind: ServiceAccount
+    name: kube-events-collector
+    namespace: openchoreo-data-plane
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-events-collector
+  namespace: openchoreo-data-plane
+  labels:
+    app: kube-events-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-events-collector
+  template:
+    metadata:
+      labels:
+        app: kube-events-collector
+    spec:
+      serviceAccountName: kube-events-collector
+      containers:
+        - name: kube-events-collector
+          image: ghcr.io/openchoreo/kube-events-collector:latest-dev
+          imagePullPolicy: Never
+          args:
+            - --log-level=debug
+            - --checkpoint-path=/data/checkpoint.db
+            - --namespace-selector=openchoreo.dev/created-by=renderedrelease-controller
+          volumeMounts:
+            - name: checkpoint
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: checkpoint
+          emptyDir: {}

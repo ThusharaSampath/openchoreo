@@ -1,0 +1,437 @@
+openapi: 3.0.3
+info:
+  title: OpenChoreo Observer - Trigger-Based Logs API
+  description: API for querying scheduled task triggers (Jobs) and retries (Pods) from the kube-events index.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8081
+    description: Observer internal (no auth, port-forwarded)
+  - url: http://localhost:8080
+    description: Observer external (requires JWT)
+
+paths:
+  /api/v1/scheduled-tasks/triggers/query:
+    post:
+      operationId: queryTriggers
+      summary: List triggers (Jobs) for a scheduled task component
+      description: |
+        Returns a list of CronJob triggers (Jobs) with derived status, event counts,
+        and individual events. Results are grouped by Job name using OpenSearch aggregations.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TriggersQueryRequest'
+            examples:
+              withUIDs:
+                summary: Query with direct UIDs (bypasses scope resolution auth)
+                value:
+                  searchScope:
+                    namespace: default
+                    project: default
+                    component: scheduled-task-2
+                    environment: development
+                    componentUID: "13a8eee6-6baf-4348-965e-800caf1890bd"
+                    environmentUID: "test-env-uid"
+                    projectUID: "test-proj-uid"
+                  startTime: "2026-04-01T00:00:00Z"
+                  endTime: "2026-04-30T23:59:59Z"
+                  limit: 10
+                  sortOrder: desc
+              withoutUIDs:
+                summary: Query with names only (requires scope resolution auth)
+                value:
+                  searchScope:
+                    namespace: default
+                    project: default
+                    component: scheduled-task-2
+                    environment: development
+                  startTime: "2026-04-01T00:00:00Z"
+                  endTime: "2026-04-30T23:59:59Z"
+                  limit: 20
+                  offset: 0
+                  sortOrder: desc
+      responses:
+        '200':
+          description: Triggers retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriggersQueryResponse'
+              example:
+                triggers:
+                  - jobName: test-scheduled-task-29599605
+                    status: succeeded
+                    startTime: "2026-04-12T06:45:00Z"
+                    completionTime: "2026-04-12T06:45:11Z"
+                    eventCount: 2
+                    events:
+                      - reason: SuccessfulCreate
+                        message: "Created pod: test-scheduled-task-29599605-7xpg9"
+                        timestamp: "2026-04-12T06:45:00Z"
+                        type: Normal
+                      - reason: Completed
+                        message: Job completed
+                        timestamp: "2026-04-12T06:45:11Z"
+                        type: Normal
+                  - jobName: test-scheduled-task-29599668
+                    status: failed
+                    startTime: "2026-04-12T07:48:00Z"
+                    completionTime: "2026-04-12T07:50:30Z"
+                    eventCount: 4
+                    events:
+                      - reason: SuccessfulCreate
+                        message: "Created pod: test-scheduled-task-29599668-abc12"
+                        timestamp: "2026-04-12T07:48:00Z"
+                        type: Normal
+                      - reason: SuccessfulCreate
+                        message: "Created pod: test-scheduled-task-29599668-def34"
+                        timestamp: "2026-04-12T07:48:15Z"
+                        type: Normal
+                      - reason: SuccessfulCreate
+                        message: "Created pod: test-scheduled-task-29599668-ghi56"
+                        timestamp: "2026-04-12T07:48:30Z"
+                        type: Normal
+                      - reason: BackoffLimitExceeded
+                        message: Job has reached the specified backoff limit
+                        timestamp: "2026-04-12T07:50:30Z"
+                        type: Warning
+                total: 63
+                tookMs: 121
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/scheduled-tasks/triggers/{jobName}/retries/query:
+    post:
+      operationId: queryRetries
+      summary: List retries (Pods) for a specific trigger (Job)
+      description: |
+        Returns a list of Pod retries for a given Job trigger. Each retry includes
+        its derived status and the K8s events associated with it (Scheduled, Pulling,
+        Pulled, Created, Started, etc.).
+      parameters:
+        - name: jobName
+          in: path
+          required: true
+          description: The Kubernetes Job name (from the triggers query response)
+          schema:
+            type: string
+          example: test-scheduled-task-29599668
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetriesQueryRequest'
+            examples:
+              withUIDs:
+                summary: Query with direct UIDs
+                value:
+                  searchScope:
+                    namespace: default
+                    project: default
+                    component: scheduled-task-2
+                    environment: development
+                    componentUID: "13a8eee6-6baf-4348-965e-800caf1890bd"
+                    environmentUID: "test-env-uid"
+                    projectUID: "test-proj-uid"
+      responses:
+        '200':
+          description: Retries retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetriesQueryResponse'
+              example:
+                retries:
+                  - podName: test-scheduled-task-29599668-abc12
+                    status: Failed
+                    startTime: "2026-04-12T07:48:02Z"
+                    eventCount: 5
+                    events:
+                      - reason: Scheduled
+                        message: "Successfully assigned dp-default-default-development-f8e58905/test-scheduled-task-29599668-abc12 to k3d-openchoreo-quick-start-server-0"
+                        timestamp: "2026-04-12T07:48:02Z"
+                        type: Normal
+                      - reason: Pulling
+                        message: "Pulling image \"busybox:latest\""
+                        timestamp: "2026-04-12T07:48:02Z"
+                        type: Normal
+                      - reason: Pulled
+                        message: "Successfully pulled image \"busybox:latest\""
+                        timestamp: "2026-04-12T07:48:04Z"
+                        type: Normal
+                      - reason: Created
+                        message: "Created container: task"
+                        timestamp: "2026-04-12T07:48:04Z"
+                        type: Normal
+                      - reason: Started
+                        message: Started container task
+                        timestamp: "2026-04-12T07:48:04Z"
+                        type: Normal
+                  - podName: test-scheduled-task-29599668-def34
+                    status: Failed
+                    startTime: "2026-04-12T07:48:15Z"
+                    eventCount: 3
+                    events:
+                      - reason: Scheduled
+                        message: "Successfully assigned ..."
+                        timestamp: "2026-04-12T07:48:15Z"
+                        type: Normal
+                      - reason: Pulled
+                        message: "Container image already present"
+                        timestamp: "2026-04-12T07:48:15Z"
+                        type: Normal
+                      - reason: Started
+                        message: Started container task
+                        timestamp: "2026-04-12T07:48:16Z"
+                        type: Normal
+                total: 3
+                tookMs: 8
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ComponentSearchScope:
+      type: object
+      required:
+        - namespace
+        - component
+        - environment
+      properties:
+        namespace:
+          type: string
+          description: OpenChoreo namespace
+          example: default
+        project:
+          type: string
+          description: OpenChoreo project name
+          example: default
+        component:
+          type: string
+          description: OpenChoreo component name
+          example: scheduled-task-2
+        environment:
+          type: string
+          description: OpenChoreo environment name
+          example: development
+        componentUID:
+          type: string
+          description: Component UID (bypasses scope resolution when provided with environmentUID)
+          example: 13a8eee6-6baf-4348-965e-800caf1890bd
+        environmentUID:
+          type: string
+          description: Environment UID (bypasses scope resolution when provided with componentUID)
+          example: test-env-uid
+        projectUID:
+          type: string
+          description: Project UID
+          example: test-proj-uid
+
+    TriggersQueryRequest:
+      type: object
+      required:
+        - searchScope
+        - startTime
+        - endTime
+      properties:
+        searchScope:
+          $ref: '#/components/schemas/ComponentSearchScope'
+        startTime:
+          type: string
+          format: date-time
+          description: Start of time range (ISO 8601)
+          example: "2026-04-01T00:00:00Z"
+        endTime:
+          type: string
+          format: date-time
+          description: End of time range (ISO 8601)
+          example: "2026-04-30T23:59:59Z"
+        limit:
+          type: integer
+          description: Maximum number of triggers to return (default 20)
+          default: 20
+          example: 10
+        offset:
+          type: integer
+          description: Number of triggers to skip for pagination
+          default: 0
+          example: 0
+        sortOrder:
+          type: string
+          description: Sort order by start time
+          enum: [asc, desc]
+          default: desc
+          example: desc
+
+    TriggersQueryResponse:
+      type: object
+      properties:
+        triggers:
+          type: array
+          items:
+            $ref: '#/components/schemas/TriggerEntry'
+        total:
+          type: integer
+          description: Total number of triggers matching the query
+          example: 63
+        tookMs:
+          type: integer
+          description: Query execution time in milliseconds
+          example: 121
+
+    TriggerEntry:
+      type: object
+      properties:
+        jobName:
+          type: string
+          description: Kubernetes Job name (unique identifier for this trigger)
+          example: test-scheduled-task-29599605
+        status:
+          type: string
+          description: "Derived status: succeeded, failed, running, or unknown"
+          enum: [succeeded, failed, running, unknown]
+          example: succeeded
+        startTime:
+          type: string
+          format: date-time
+          description: Earliest event timestamp for this trigger
+          example: "2026-04-12T06:45:00Z"
+        completionTime:
+          type: string
+          format: date-time
+          description: Latest event timestamp (approximate completion time)
+          example: "2026-04-12T06:45:11Z"
+        eventCount:
+          type: integer
+          description: Total number of events for this trigger
+          example: 2
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/TriggerEvent'
+
+    TriggerEvent:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: K8s event reason
+          example: Completed
+        message:
+          type: string
+          description: Human-readable event message
+          example: Job completed
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-04-12T06:45:11Z"
+        type:
+          type: string
+          description: Event severity
+          enum: [Normal, Warning]
+          example: Normal
+
+    RetriesQueryRequest:
+      type: object
+      required:
+        - searchScope
+      properties:
+        searchScope:
+          $ref: '#/components/schemas/ComponentSearchScope'
+
+    RetriesQueryResponse:
+      type: object
+      properties:
+        retries:
+          type: array
+          items:
+            $ref: '#/components/schemas/RetryEntry'
+        total:
+          type: integer
+          description: Total number of retries
+          example: 3
+        tookMs:
+          type: integer
+          description: Query execution time in milliseconds
+          example: 8
+
+    RetryEntry:
+      type: object
+      properties:
+        podName:
+          type: string
+          description: Kubernetes Pod name
+          example: test-scheduled-task-29599668-abc12
+        status:
+          type: string
+          description: "Derived status: Succeeded, Failed, Running, or Unknown"
+          enum: [Succeeded, Failed, Running, Unknown]
+          example: Failed
+        startTime:
+          type: string
+          format: date-time
+          description: Earliest event timestamp for this retry
+          example: "2026-04-12T07:48:02Z"
+        eventCount:
+          type: integer
+          description: Total number of events for this retry
+          example: 5
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/RetryEvent'
+
+    RetryEvent:
+      type: object
+      properties:
+        reason:
+          type: string
+          example: Started
+        message:
+          type: string
+          example: Started container task
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-04-12T07:48:04Z"
+        type:
+          type: string
+          enum: [Normal, Warning]
+          example: Normal
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          example: BadRequest
+        errorCode:
+          type: string
+          example: ""
+        message:
+          type: string
+          example: "searchScope is required"
