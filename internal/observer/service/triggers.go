@@ -197,6 +197,22 @@ func parseTriggerAggregation(resp *opensearch.SearchResponse, offset int) (*type
 }
 
 // parseRetriesAggregation parses the aggregation response into RetryEntry list.
+//
+// The retries aggregation is a filter+terms (filter on Pod kind, terms on involvedObject.name).
+// A sibling "job_reasons" filter aggregation captures the parent Job's event reasons in the same
+// query, so we can derive the trigger status and override per-retry status here.
+//
+// Status override (Option 2 from the design doc — works around the fact that K8s does not emit
+// a Pod-level "Completed" / "Failed" event on container exit, so deriveRetryStatus from pod
+// events alone reports "Running" forever for finished pods):
+//   - If the parent Job failed (BackoffLimitExceeded / DeadlineExceeded): all retries → Failed.
+//   - If the parent Job succeeded: the last retry (by start time, ascending) → Succeeded; any
+//     earlier retries are by definition the reason for the retry, so → Failed.
+//   - If the Job is still running / unknown: keep whatever deriveRetryStatus produced.
+//
+// Future (Milestone 4): emit synthetic Pod-level events from kube-events-collector on
+// pod.Status.Phase transitions to Succeeded/Failed (per-container exit code) so this
+// override is no longer necessary. See docs/contributors/trigger-based-logs.md.
 func parseRetriesAggregation(resp *opensearch.SearchResponse) (*types.RetriesQueryResponse, error) {
 	if resp == nil || resp.Aggregations == nil {
 		return &types.RetriesQueryResponse{Retries: []types.RetryEntry{}}, nil
@@ -207,15 +223,27 @@ func parseRetriesAggregation(resp *opensearch.SearchResponse) (*types.RetriesQue
 		return &types.RetriesQueryResponse{Retries: []types.RetryEntry{}}, nil
 	}
 
-	var aggResult struct {
-		Buckets []retryBucket `json:"buckets"`
+	var podsWrapper struct {
+		Pods struct {
+			Buckets []retryBucket `json:"buckets"`
+		} `json:"pods"`
 	}
-	if err := json.Unmarshal(retriesAgg, &aggResult); err != nil {
+	if err := json.Unmarshal(retriesAgg, &podsWrapper); err != nil {
 		return nil, fmt.Errorf("failed to parse retries aggregation: %w", err)
 	}
 
-	retries := make([]types.RetryEntry, 0, len(aggResult.Buckets))
-	for _, bucket := range aggResult.Buckets {
+	jobStatus := "unknown"
+	if jobReasonsAgg, ok := resp.Aggregations["job_reasons"]; ok {
+		var jobReasons struct {
+			Reasons reasonsBucket `json:"reasons"`
+		}
+		if err := json.Unmarshal(jobReasonsAgg, &jobReasons); err == nil {
+			jobStatus = deriveTriggerStatus(jobReasons.Reasons)
+		}
+	}
+
+	retries := make([]types.RetryEntry, 0, len(podsWrapper.Pods.Buckets))
+	for _, bucket := range podsWrapper.Pods.Buckets {
 		retry := types.RetryEntry{
 			PodName:    bucket.Key,
 			EventCount: bucket.DocCount,
@@ -230,11 +258,36 @@ func parseRetriesAggregation(resp *opensearch.SearchResponse) (*types.RetriesQue
 		retries = append(retries, retry)
 	}
 
+	applyTriggerStatusOverride(retries, jobStatus)
+
 	return &types.RetriesQueryResponse{
 		Retries: retries,
 		Total:   len(retries),
 		TookMs:  resp.Took,
 	}, nil
+}
+
+// applyTriggerStatusOverride mutates retries in-place so their statuses reflect the parent
+// Job's outcome. retries is expected to already be ordered by first_seen ascending (the
+// retries-pods aggregation orders by first_seen asc).
+func applyTriggerStatusOverride(retries []types.RetryEntry, jobStatus string) {
+	if len(retries) == 0 {
+		return
+	}
+	switch jobStatus {
+	case "failed":
+		for i := range retries {
+			retries[i].Status = "Failed"
+		}
+	case "succeeded":
+		for i := range retries {
+			if i == len(retries)-1 {
+				retries[i].Status = "Succeeded"
+			} else {
+				retries[i].Status = "Failed"
+			}
+		}
+	}
 }
 
 // triggerBucket represents a single bucket in the triggers aggregation.

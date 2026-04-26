@@ -1152,19 +1152,47 @@ func (qb *QueryBuilder) BuildTriggersQuery(params TriggersQueryParams) (map[stri
 }
 
 // BuildRetriesQuery builds an OpenSearch aggregation query to list retries (Pods) for a specific trigger (Job).
-// It queries the kube-events index for Pod events whose name matches the job name prefix.
+// It queries the kube-events index for both:
+//   - Pod events whose name matches the job name prefix (used for the "retries" aggregation)
+//   - Job events for the trigger itself (used for the "job_reasons" aggregation, which lets the
+//     service derive the parent trigger status and override per-retry status accordingly — see
+//     the comment in parseRetriesAggregation).
 func (qb *QueryBuilder) BuildRetriesQuery(params RetriesQueryParams) (map[string]interface{}, error) {
 	if params.JobName == "" {
 		return nil, fmt.Errorf("job name is required")
 	}
 
-	mustConditions := []map[string]interface{}{
-		{"term": map[string]interface{}{"involvedObject.kind": "Pod"}},
-		{"wildcard": map[string]interface{}{
-			"involvedObject.name": map[string]interface{}{
-				"value": params.JobName + "-*",
+	// Match either the Pod retries (by name prefix) or the parent Job event (by exact name).
+	shouldConditions := []map[string]interface{}{
+		{
+			"bool": map[string]interface{}{
+				"must": []map[string]interface{}{
+					{"term": map[string]interface{}{"involvedObject.kind": "Pod"}},
+					{"wildcard": map[string]interface{}{
+						"involvedObject.name": map[string]interface{}{
+							"value": params.JobName + "-*",
+						},
+					}},
+				},
 			},
-		}},
+		},
+		{
+			"bool": map[string]interface{}{
+				"must": []map[string]interface{}{
+					{"term": map[string]interface{}{"involvedObject.kind": "Job"}},
+					{"term": map[string]interface{}{"involvedObject.name": params.JobName}},
+				},
+			},
+		},
+	}
+
+	mustConditions := []map[string]interface{}{
+		{
+			"bool": map[string]interface{}{
+				"should":               shouldConditions,
+				"minimum_should_match": 1,
+			},
+		},
 	}
 
 	if params.ComponentID != "" {
@@ -1187,28 +1215,45 @@ func (qb *QueryBuilder) BuildRetriesQuery(params RetriesQueryParams) (map[string
 		},
 		"aggs": map[string]interface{}{
 			"retries": map[string]interface{}{
-				"terms": map[string]interface{}{
-					"field": "involvedObject.name",
-					"size":  20,
-					"order": map[string]interface{}{
-						"first_seen": "asc",
-					},
+				"filter": map[string]interface{}{
+					"term": map[string]interface{}{"involvedObject.kind": "Pod"},
 				},
 				"aggs": map[string]interface{}{
-					"first_seen": map[string]interface{}{
-						"min": map[string]interface{}{"field": "@timestamp"},
+					"pods": map[string]interface{}{
+						"terms": map[string]interface{}{
+							"field": "involvedObject.name",
+							"size":  20,
+							"order": map[string]interface{}{
+								"first_seen": "asc",
+							},
+						},
+						"aggs": map[string]interface{}{
+							"first_seen": map[string]interface{}{
+								"min": map[string]interface{}{"field": "@timestamp"},
+							},
+							"reasons": map[string]interface{}{
+								"terms": map[string]interface{}{"field": "reason", "size": 20},
+							},
+							"events": map[string]interface{}{
+								"top_hits": map[string]interface{}{
+									"size": 10,
+									"sort": []map[string]interface{}{
+										{"@timestamp": map[string]interface{}{"order": "asc"}},
+									},
+									"_source": []string{"reason", "message", "@timestamp", "type"},
+								},
+							},
+						},
 					},
+				},
+			},
+			"job_reasons": map[string]interface{}{
+				"filter": map[string]interface{}{
+					"term": map[string]interface{}{"involvedObject.kind": "Job"},
+				},
+				"aggs": map[string]interface{}{
 					"reasons": map[string]interface{}{
 						"terms": map[string]interface{}{"field": "reason", "size": 20},
-					},
-					"events": map[string]interface{}{
-						"top_hits": map[string]interface{}{
-							"size": 10,
-							"sort": []map[string]interface{}{
-								{"@timestamp": map[string]interface{}{"order": "asc"}},
-							},
-							"_source": []string{"reason", "message", "@timestamp", "type"},
-						},
 					},
 				},
 			},
