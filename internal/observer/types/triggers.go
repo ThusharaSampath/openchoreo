@@ -11,6 +11,10 @@ type TriggersQueryRequest struct {
 	Limit       int                   `json:"limit,omitempty"`
 	Offset      int                   `json:"offset,omitempty"`
 	SortOrder   string                `json:"sortOrder,omitempty"` // asc or desc, default: desc
+	// IncludeEvents controls whether each TriggerEntry's Events array is populated.
+	// Defaults to false: callers that only render the trigger row (status, times, count) get
+	// a smaller payload and the backend skips the per-trigger top_hits sub-aggregation.
+	IncludeEvents bool `json:"includeEvents,omitempty"`
 }
 
 // TriggerEvent represents a single event within a trigger.
@@ -37,6 +41,11 @@ type TriggerEntry struct {
 
 	// EventCount is the total number of events for this trigger.
 	EventCount int `json:"eventCount"`
+
+	// FailureReason is the K8s event reason that caused the failure
+	// (e.g. "BackoffLimitExceeded", "DeadlineExceeded"). Only set when Status == "failed";
+	// derived from the same reasons aggregation that drives Status, so it costs nothing extra.
+	FailureReason string `json:"failureReason,omitempty"`
 
 	// Events is the list of events associated with this trigger.
 	Events []TriggerEvent `json:"events,omitempty"`

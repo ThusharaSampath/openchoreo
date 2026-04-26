@@ -1103,6 +1103,30 @@ func (qb *QueryBuilder) BuildTriggersQuery(params TriggersQueryParams) (map[stri
 		sortOrder = "desc"
 	}
 
+	triggerSubAggs := map[string]interface{}{
+		"first_seen": map[string]interface{}{
+			"min": map[string]interface{}{"field": "@timestamp"},
+		},
+		"last_seen": map[string]interface{}{
+			"max": map[string]interface{}{"field": "@timestamp"},
+		},
+		"reasons": map[string]interface{}{
+			"terms": map[string]interface{}{"field": "reason", "size": 20},
+		},
+	}
+
+	if params.IncludeEvents {
+		triggerSubAggs["events"] = map[string]interface{}{
+			"top_hits": map[string]interface{}{
+				"size": 10,
+				"sort": []map[string]interface{}{
+					{"@timestamp": map[string]interface{}{"order": "asc"}},
+				},
+				"_source": []string{"reason", "message", "@timestamp", "type"},
+			},
+		}
+	}
+
 	query := map[string]interface{}{
 		"size": 0,
 		"query": map[string]interface{}{
@@ -1119,26 +1143,7 @@ func (qb *QueryBuilder) BuildTriggersQuery(params TriggersQueryParams) (map[stri
 						"first_seen": sortOrder,
 					},
 				},
-				"aggs": map[string]interface{}{
-					"first_seen": map[string]interface{}{
-						"min": map[string]interface{}{"field": "@timestamp"},
-					},
-					"last_seen": map[string]interface{}{
-						"max": map[string]interface{}{"field": "@timestamp"},
-					},
-					"reasons": map[string]interface{}{
-						"terms": map[string]interface{}{"field": "reason", "size": 20},
-					},
-					"events": map[string]interface{}{
-						"top_hits": map[string]interface{}{
-							"size": 10,
-							"sort": []map[string]interface{}{
-								{"@timestamp": map[string]interface{}{"order": "asc"}},
-							},
-							"_source": []string{"reason", "message", "@timestamp", "type"},
-						},
-					},
-				},
+				"aggs": triggerSubAggs,
 			},
 			"total_triggers": map[string]interface{}{
 				"cardinality": map[string]interface{}{

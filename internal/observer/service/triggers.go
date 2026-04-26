@@ -56,6 +56,7 @@ func (s *LogsService) QueryTriggers(ctx context.Context, req *types.TriggersQuer
 		Limit:         req.Limit,
 		Offset:        req.Offset,
 		SortOrder:     req.SortOrder,
+		IncludeEvents: req.IncludeEvents,
 	}
 
 	if s.defaultAdaptor == nil {
@@ -178,6 +179,10 @@ func parseTriggerAggregation(resp *opensearch.SearchResponse, offset int) (*type
 			Status:     deriveTriggerStatus(bucket.Reasons),
 		}
 
+		if trigger.Status == "failed" {
+			trigger.FailureReason = deriveFailureReason(bucket.Reasons)
+		}
+
 		if bucket.FirstSeen.Value != nil {
 			trigger.StartTime = formatMillisTimestamp(*bucket.FirstSeen.Value)
 		}
@@ -208,7 +213,10 @@ func parseTriggerAggregation(resp *opensearch.SearchResponse, offset int) (*type
 //   - If the parent Job failed (BackoffLimitExceeded / DeadlineExceeded): all retries → Failed.
 //   - If the parent Job succeeded: the last retry (by start time, ascending) → Succeeded; any
 //     earlier retries are by definition the reason for the retry, so → Failed.
-//   - If the Job is still running / unknown: keep whatever deriveRetryStatus produced.
+//   - If the parent Job is still running and has 2+ retries: every retry except the last must
+//     have failed (the Job controller only spawns a new pod when the previous one failed under
+//     restartPolicy: Never). Earlier retries → Failed; the last keeps deriveRetryStatus output.
+//   - If the Job is unknown (or running with a single retry): keep whatever deriveRetryStatus produced.
 //
 // Future (Milestone 4): emit synthetic Pod-level events from kube-events-collector on
 // pod.Status.Phase transitions to Succeeded/Failed (per-container exit code) so this
@@ -287,6 +295,14 @@ func applyTriggerStatusOverride(retries []types.RetryEntry, jobStatus string) {
 				retries[i].Status = "Failed"
 			}
 		}
+	case "running":
+		// Mark every retry except the last as Failed: under restartPolicy: Never the Job
+		// controller only spawns a fresh pod when the previous one failed, so the existence
+		// of an N+1th pod is itself proof that pods 1..N failed. Leave the last pod's status
+		// to deriveRetryStatus — it is the only one that could legitimately still be running.
+		for i := 0; i < len(retries)-1; i++ {
+			retries[i].Status = "Failed"
+		}
 	}
 }
 
@@ -345,6 +361,19 @@ func deriveTriggerStatus(reasons reasonsBucket) string {
 		return "running"
 	}
 	return "unknown"
+}
+
+// deriveFailureReason returns the K8s event reason that caused the Job to fail,
+// or "" if no failure-indicating reason is present in the bucket. Reuses the same
+// reasons aggregation as deriveTriggerStatus, so it costs nothing extra.
+func deriveFailureReason(reasons reasonsBucket) string {
+	for _, r := range reasons.Buckets {
+		switch r.Key {
+		case "BackoffLimitExceeded", "DeadlineExceeded", "FailedCreate":
+			return r.Key
+		}
+	}
+	return ""
 }
 
 // deriveRetryStatus determines retry (Pod) status from event reasons.

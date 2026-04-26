@@ -286,6 +286,15 @@ components:
           enum: [asc, desc]
           default: desc
           example: desc
+        includeEvents:
+          type: boolean
+          description: >
+            When true, each TriggerEntry's `events` array is populated from a per-trigger
+            top_hits aggregation. Defaults to false to keep responses small for callers that
+            only render the trigger row (status, times, event count) and fetch retries +
+            their events on demand.
+          default: false
+          example: false
 
     TriggersQueryResponse:
       type: object
@@ -329,6 +338,14 @@ components:
           type: integer
           description: Total number of events for this trigger
           example: 2
+        failureReason:
+          type: string
+          description: >
+            K8s event reason that caused the failure (e.g. `BackoffLimitExceeded`,
+            `DeadlineExceeded`, `FailedCreate`). Only present when `status == failed`.
+            Derived from the same reasons aggregation that drives `status`, so it does
+            not require `includeEvents=true`.
+          example: BackoffLimitExceeded
         events:
           type: array
           items:

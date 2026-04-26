@@ -190,6 +190,10 @@ type TriggersQueryParams struct {
 	Limit         int
 	Offset        int
 	SortOrder     string
+	// IncludeEvents controls whether the per-trigger `events` top_hits sub-aggregation is
+	// added to the OpenSearch query. False means the response carries no per-trigger event
+	// hits, which is cheaper for both OpenSearch and the wire.
+	IncludeEvents bool
 }
 
 // RetriesQueryParams holds parameters for querying retries (Pods) for a specific trigger
