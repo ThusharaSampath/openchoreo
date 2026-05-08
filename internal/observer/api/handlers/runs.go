@@ -15,16 +15,16 @@ import (
 	"github.com/openchoreo/openchoreo/internal/observer/types"
 )
 
-// QueryTriggers handles POST /api/v1/scheduled-tasks/triggers/query
-func (h *Handler) QueryTriggers(w http.ResponseWriter, r *http.Request) {
-	var req types.TriggersQueryRequest
+// QueryRuns handles POST /api/v1/scheduled-tasks/runs/query
+func (h *Handler) QueryRuns(w http.ResponseWriter, r *http.Request) {
+	var req types.RunsQueryRequest
 	if err := httputil.BindJSON(r, &req); err != nil {
 		h.logger.Error("Failed to bind request", "error", err)
 		h.writeErrorResponse(w, http.StatusBadRequest, gen.BadRequest, "", "Invalid request format")
 		return
 	}
 
-	if err := validateTriggersQueryRequest(&req); err != nil {
+	if err := validateRunsQueryRequest(&req); err != nil {
 		h.logger.Debug("Validation failed", "error", err)
 		h.writeErrorResponse(w, http.StatusBadRequest, gen.BadRequest, "", err.Error())
 		return
@@ -36,7 +36,7 @@ func (h *Handler) QueryTriggers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.logsService.QueryTriggers(ctx, &req)
+	result, err := h.logsService.QueryRuns(ctx, &req)
 	if err != nil {
 		if errors.Is(err, observerAuthz.ErrAuthzForbidden) {
 			h.writeErrorResponse(w, http.StatusForbidden, gen.Forbidden, "", "Access denied")
@@ -46,19 +46,19 @@ func (h *Handler) QueryTriggers(w http.ResponseWriter, r *http.Request) {
 			h.writeErrorResponse(w, http.StatusUnauthorized, gen.Unauthorized, "", "Unauthorized")
 			return
 		}
-		h.logger.Error("Failed to query triggers", "error", err)
+		h.logger.Error("Failed to query runs", "error", err)
 		if errors.Is(err, service.ErrLogsResolveSearchScope) {
 			h.writeErrorResponse(w, http.StatusInternalServerError, gen.InternalServerError, types.ErrorCodeV1LogsResolverFailed, "Failed to resolve search scope")
 			return
 		}
-		h.writeErrorResponse(w, http.StatusInternalServerError, gen.InternalServerError, "", "Failed to retrieve triggers")
+		h.writeErrorResponse(w, http.StatusInternalServerError, gen.InternalServerError, "", "Failed to retrieve runs")
 		return
 	}
 
 	h.writeJSON(w, http.StatusOK, result)
 }
 
-// QueryRetries handles POST /api/v1/scheduled-tasks/triggers/{jobName}/retries/query
+// QueryRetries handles POST /api/v1/scheduled-tasks/runs/{jobName}/retries/query
 func (h *Handler) QueryRetries(w http.ResponseWriter, r *http.Request) {
 	jobName := r.PathValue("jobName")
 	if jobName == "" {
@@ -102,8 +102,8 @@ func (h *Handler) QueryRetries(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, result)
 }
 
-// validateTriggersQueryRequest validates the triggers query request.
-func validateTriggersQueryRequest(req *types.TriggersQueryRequest) error {
+// validateRunsQueryRequest validates the runs query request.
+func validateRunsQueryRequest(req *types.RunsQueryRequest) error {
 	if req.SearchScope == nil {
 		return fmt.Errorf("searchScope is required")
 	}
@@ -117,10 +117,10 @@ func validateTriggersQueryRequest(req *types.TriggersQueryRequest) error {
 		return fmt.Errorf("endTime is required")
 	}
 	if req.SearchScope.Component == "" {
-		return fmt.Errorf("searchScope.component is required for trigger queries")
+		return fmt.Errorf("searchScope.component is required for run queries")
 	}
 	if req.SearchScope.Environment == "" {
-		return fmt.Errorf("searchScope.environment is required for trigger queries")
+		return fmt.Errorf("searchScope.environment is required for run queries")
 	}
 	return nil
 }

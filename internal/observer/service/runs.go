@@ -15,13 +15,13 @@ import (
 
 const kubeEventsIndexPattern = "kube-events-*"
 
-// QueryTriggers queries triggers (Jobs) for a scheduled task component from the kube-events index.
-func (s *LogsService) QueryTriggers(ctx context.Context, req *types.TriggersQueryRequest) (*types.TriggersQueryResponse, error) {
+// QueryRuns queries runs (Jobs) for a scheduled task component from the kube-events index.
+func (s *LogsService) QueryRuns(ctx context.Context, req *types.RunsQueryRequest) (*types.RunsQueryResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("request is required")
 	}
 
-	s.logger.Info("QueryTriggers called",
+	s.logger.Info("QueryRuns called",
 		"namespace", req.SearchScope.Namespace,
 		"component", req.SearchScope.Component,
 		"environment", req.SearchScope.Environment,
@@ -46,7 +46,7 @@ func (s *LogsService) QueryTriggers(ctx context.Context, req *types.TriggersQuer
 		namespaceName = scope.NamespaceName
 	}
 
-	params := opensearch.TriggersQueryParams{
+	params := opensearch.RunsQueryParams{
 		StartTime:     req.StartTime,
 		EndTime:       req.EndTime,
 		NamespaceName: namespaceName,
@@ -65,21 +65,21 @@ func (s *LogsService) QueryTriggers(ctx context.Context, req *types.TriggersQuer
 
 	// Build and execute query
 	qb := &opensearch.QueryBuilder{}
-	query, err := qb.BuildTriggersQuery(params)
+	query, err := qb.BuildRunsQuery(params)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build triggers query: %w", err)
+		return nil, fmt.Errorf("failed to build runs query: %w", err)
 	}
 
 	indices := []string{kubeEventsIndexPattern}
 	result, err := s.defaultAdaptor.SearchRaw(ctx, indices, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query triggers: %w", err)
+		return nil, fmt.Errorf("failed to query runs: %w", err)
 	}
 
-	return parseTriggerAggregation(result, params.Offset)
+	return parseRunAggregation(result, params.Offset)
 }
 
-// QueryRetries queries retries (Pods) for a specific trigger (Job) from the kube-events index.
+// QueryRetries queries retries (Pods) for a specific run (Job) from the kube-events index.
 func (s *LogsService) QueryRetries(ctx context.Context, jobName string, req *types.RetriesQueryRequest) (*types.RetriesQueryResponse, error) {
 	if req == nil || jobName == "" {
 		return nil, fmt.Errorf("request and job name are required")
@@ -134,27 +134,27 @@ func (s *LogsService) QueryRetries(ctx context.Context, jobName string, req *typ
 	return parseRetriesAggregation(result)
 }
 
-// parseTriggerAggregation parses the aggregation response into TriggerEntry list.
-func parseTriggerAggregation(resp *opensearch.SearchResponse, offset int) (*types.TriggersQueryResponse, error) {
+// parseRunAggregation parses the aggregation response into RunEntry list.
+func parseRunAggregation(resp *opensearch.SearchResponse, offset int) (*types.RunsQueryResponse, error) {
 	if resp == nil || resp.Aggregations == nil {
-		return &types.TriggersQueryResponse{Triggers: []types.TriggerEntry{}}, nil
+		return &types.RunsQueryResponse{Runs: []types.RunEntry{}}, nil
 	}
 
-	triggersAgg, ok := resp.Aggregations["triggers"]
+	runsAgg, ok := resp.Aggregations["runs"]
 	if !ok {
-		return &types.TriggersQueryResponse{Triggers: []types.TriggerEntry{}}, nil
+		return &types.RunsQueryResponse{Runs: []types.RunEntry{}}, nil
 	}
 
 	var aggResult struct {
-		Buckets []triggerBucket `json:"buckets"`
+		Buckets []runBucket `json:"buckets"`
 	}
-	if err := json.Unmarshal(triggersAgg, &aggResult); err != nil {
-		return nil, fmt.Errorf("failed to parse triggers aggregation: %w", err)
+	if err := json.Unmarshal(runsAgg, &aggResult); err != nil {
+		return nil, fmt.Errorf("failed to parse runs aggregation: %w", err)
 	}
 
 	// Parse total count
 	total := len(aggResult.Buckets)
-	if totalAgg, ok := resp.Aggregations["total_triggers"]; ok {
+	if totalAgg, ok := resp.Aggregations["total_runs"]; ok {
 		var cardResult struct {
 			Value int `json:"value"`
 		}
@@ -171,33 +171,33 @@ func parseTriggerAggregation(resp *opensearch.SearchResponse, offset int) (*type
 		buckets = nil
 	}
 
-	triggers := make([]types.TriggerEntry, 0, len(buckets))
+	runs := make([]types.RunEntry, 0, len(buckets))
 	for _, bucket := range buckets {
-		trigger := types.TriggerEntry{
+		run := types.RunEntry{
 			JobName:    bucket.Key,
 			EventCount: bucket.DocCount,
-			Status:     deriveTriggerStatus(bucket.Reasons),
+			Status:     deriveRunStatus(bucket.Reasons),
 		}
 
-		if trigger.Status == "failed" {
-			trigger.FailureReason = deriveFailureReason(bucket.Reasons)
+		if run.Status == "failed" {
+			run.FailureReason = deriveFailureReason(bucket.Reasons)
 		}
 
 		if bucket.FirstSeen.Value != nil {
-			trigger.StartTime = formatMillisTimestamp(*bucket.FirstSeen.Value)
+			run.StartTime = formatMillisTimestamp(*bucket.FirstSeen.Value)
 		}
 		if bucket.LastSeen.Value != nil {
-			trigger.CompletionTime = formatMillisTimestamp(*bucket.LastSeen.Value)
+			run.CompletionTime = formatMillisTimestamp(*bucket.LastSeen.Value)
 		}
 
-		trigger.Events = parseTopHitEvents(bucket.Events)
-		triggers = append(triggers, trigger)
+		run.Events = parseTopHitEvents(bucket.Events)
+		runs = append(runs, run)
 	}
 
-	return &types.TriggersQueryResponse{
-		Triggers: triggers,
-		Total:    total,
-		TookMs:   resp.Took,
+	return &types.RunsQueryResponse{
+		Runs:   runs,
+		Total:  total,
+		TookMs: resp.Took,
 	}, nil
 }
 
@@ -205,7 +205,7 @@ func parseTriggerAggregation(resp *opensearch.SearchResponse, offset int) (*type
 //
 // The retries aggregation is a filter+terms (filter on Pod kind, terms on involvedObject.name).
 // A sibling "job_reasons" filter aggregation captures the parent Job's event reasons in the same
-// query, so we can derive the trigger status and override per-retry status here.
+// query, so we can derive the run status and override per-retry status here.
 //
 // Status override (Option 2 from the design doc — works around the fact that K8s does not emit
 // a Pod-level "Completed" / "Failed" event on container exit, so deriveRetryStatus from pod
@@ -220,7 +220,7 @@ func parseTriggerAggregation(resp *opensearch.SearchResponse, offset int) (*type
 //
 // Future (Milestone 4): emit synthetic Pod-level events from kube-events-collector on
 // pod.Status.Phase transitions to Succeeded/Failed (per-container exit code) so this
-// override is no longer necessary. See docs/contributors/trigger-based-logs.md.
+// override is no longer necessary. See docs/contributors/run-based-logs.md.
 func parseRetriesAggregation(resp *opensearch.SearchResponse) (*types.RetriesQueryResponse, error) {
 	if resp == nil || resp.Aggregations == nil {
 		return &types.RetriesQueryResponse{Retries: []types.RetryEntry{}}, nil
@@ -246,7 +246,7 @@ func parseRetriesAggregation(resp *opensearch.SearchResponse) (*types.RetriesQue
 			Reasons reasonsBucket `json:"reasons"`
 		}
 		if err := json.Unmarshal(jobReasonsAgg, &jobReasons); err == nil {
-			jobStatus = deriveTriggerStatus(jobReasons.Reasons)
+			jobStatus = deriveRunStatus(jobReasons.Reasons)
 		}
 	}
 
@@ -266,7 +266,7 @@ func parseRetriesAggregation(resp *opensearch.SearchResponse) (*types.RetriesQue
 		retries = append(retries, retry)
 	}
 
-	applyTriggerStatusOverride(retries, jobStatus)
+	applyRunStatusOverride(retries, jobStatus)
 
 	return &types.RetriesQueryResponse{
 		Retries: retries,
@@ -275,10 +275,10 @@ func parseRetriesAggregation(resp *opensearch.SearchResponse) (*types.RetriesQue
 	}, nil
 }
 
-// applyTriggerStatusOverride mutates retries in-place so their statuses reflect the parent
+// applyRunStatusOverride mutates retries in-place so their statuses reflect the parent
 // Job's outcome. retries is expected to already be ordered by first_seen ascending (the
 // retries-pods aggregation orders by first_seen asc).
-func applyTriggerStatusOverride(retries []types.RetryEntry, jobStatus string) {
+func applyRunStatusOverride(retries []types.RetryEntry, jobStatus string) {
 	if len(retries) == 0 {
 		return
 	}
@@ -306,10 +306,10 @@ func applyTriggerStatusOverride(retries []types.RetryEntry, jobStatus string) {
 	}
 }
 
-// triggerBucket represents a single bucket in the triggers aggregation.
-type triggerBucket struct {
-	Key      string         `json:"key"`
-	DocCount int            `json:"doc_count"`
+// runBucket represents a single bucket in the runs aggregation.
+type runBucket struct {
+	Key       string        `json:"key"`
+	DocCount  int           `json:"doc_count"`
 	FirstSeen metricValue   `json:"first_seen"`
 	LastSeen  metricValue   `json:"last_seen"`
 	Reasons   reasonsBucket `json:"reasons"`
@@ -318,11 +318,11 @@ type triggerBucket struct {
 
 // retryBucket represents a single bucket in the retries aggregation.
 type retryBucket struct {
-	Key       string         `json:"key"`
-	DocCount  int            `json:"doc_count"`
-	FirstSeen metricValue    `json:"first_seen"`
-	Reasons   reasonsBucket  `json:"reasons"`
-	Events    topHitsResult  `json:"events"`
+	Key       string        `json:"key"`
+	DocCount  int           `json:"doc_count"`
+	FirstSeen metricValue   `json:"first_seen"`
+	Reasons   reasonsBucket `json:"reasons"`
+	Events    topHitsResult `json:"events"`
 }
 
 type metricValue struct {
@@ -344,8 +344,8 @@ type topHitsResult struct {
 	} `json:"hits"`
 }
 
-// deriveTriggerStatus determines trigger status from event reasons.
-func deriveTriggerStatus(reasons reasonsBucket) string {
+// deriveRunStatus determines run status from event reasons.
+func deriveRunStatus(reasons reasonsBucket) string {
 	reasonSet := make(map[string]bool)
 	for _, r := range reasons.Buckets {
 		reasonSet[r.Key] = true
@@ -365,7 +365,7 @@ func deriveTriggerStatus(reasons reasonsBucket) string {
 
 // deriveFailureReason returns the K8s event reason that caused the Job to fail,
 // or "" if no failure-indicating reason is present in the bucket. Reuses the same
-// reasons aggregation as deriveTriggerStatus, so it costs nothing extra.
+// reasons aggregation as deriveRunStatus, so it costs nothing extra.
 func deriveFailureReason(reasons reasonsBucket) string {
 	for _, r := range reasons.Buckets {
 		switch r.Key {
@@ -402,11 +402,11 @@ func formatMillisTimestamp(millis float64) string {
 	return time.Unix(sec, nsec).UTC().Format(time.RFC3339)
 }
 
-// parseTopHitEvents extracts TriggerEvent list from a top_hits aggregation.
-func parseTopHitEvents(hits topHitsResult) []types.TriggerEvent {
-	events := make([]types.TriggerEvent, 0, len(hits.Hits.Hits))
+// parseTopHitEvents extracts RunEvent list from a top_hits aggregation.
+func parseTopHitEvents(hits topHitsResult) []types.RunEvent {
+	events := make([]types.RunEvent, 0, len(hits.Hits.Hits))
 	for _, hit := range hits.Hits.Hits {
-		event := types.TriggerEvent{}
+		event := types.RunEvent{}
 		if v, ok := hit.Source["reason"].(string); ok {
 			event.Reason = v
 		}

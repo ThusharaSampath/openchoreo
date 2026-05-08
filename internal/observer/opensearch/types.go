@@ -179,8 +179,8 @@ type ComponentLogsQueryParamsV1 struct {
 	PodName       string   `json:"podName,omitempty"` // Optional: filter logs to a specific pod
 }
 
-// TriggersQueryParams holds parameters for querying triggers (Jobs) from kube-events index
-type TriggersQueryParams struct {
+// RunsQueryParams holds parameters for querying runs (Jobs) from kube-events index
+type RunsQueryParams struct {
 	StartTime     string
 	EndTime       string
 	NamespaceName string
@@ -190,13 +190,13 @@ type TriggersQueryParams struct {
 	Limit         int
 	Offset        int
 	SortOrder     string
-	// IncludeEvents controls whether the per-trigger `events` top_hits sub-aggregation is
-	// added to the OpenSearch query. False means the response carries no per-trigger event
+	// IncludeEvents controls whether the per-run `events` top_hits sub-aggregation is
+	// added to the OpenSearch query. False means the response carries no per-run event
 	// hits, which is cheaper for both OpenSearch and the wire.
 	IncludeEvents bool
 }
 
-// RetriesQueryParams holds parameters for querying retries (Pods) for a specific trigger
+// RetriesQueryParams holds parameters for querying retries (Pods) for a specific run
 type RetriesQueryParams struct {
 	JobName       string
 	NamespaceName string

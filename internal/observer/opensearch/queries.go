@@ -1068,10 +1068,10 @@ func (qb *QueryBuilder) BuildComponentLogsQueryV1(params ComponentLogsQueryParam
 	return query, nil
 }
 
-// BuildTriggersQuery builds an OpenSearch aggregation query to list triggers (Jobs) for a scheduled task component.
+// BuildRunsQuery builds an OpenSearch aggregation query to list runs (Jobs) for a scheduled task component.
 // It queries the kube-events index, filtering by involvedObject.kind=Job and OpenChoreo labels,
-// then aggregates by involvedObject.name (Job name) to produce a list of triggers.
-func (qb *QueryBuilder) BuildTriggersQuery(params TriggersQueryParams) (map[string]interface{}, error) {
+// then aggregates by involvedObject.name (Job name) to produce a list of runs.
+func (qb *QueryBuilder) BuildRunsQuery(params RunsQueryParams) (map[string]interface{}, error) {
 	if params.StartTime == "" || params.EndTime == "" {
 		return nil, fmt.Errorf("start time and end time are required")
 	}
@@ -1103,7 +1103,7 @@ func (qb *QueryBuilder) BuildTriggersQuery(params TriggersQueryParams) (map[stri
 		sortOrder = "desc"
 	}
 
-	triggerSubAggs := map[string]interface{}{
+	runSubAggs := map[string]interface{}{
 		"first_seen": map[string]interface{}{
 			"min": map[string]interface{}{"field": "@timestamp"},
 		},
@@ -1116,7 +1116,7 @@ func (qb *QueryBuilder) BuildTriggersQuery(params TriggersQueryParams) (map[stri
 	}
 
 	if params.IncludeEvents {
-		triggerSubAggs["events"] = map[string]interface{}{
+		runSubAggs["events"] = map[string]interface{}{
 			"top_hits": map[string]interface{}{
 				"size": 10,
 				"sort": []map[string]interface{}{
@@ -1135,7 +1135,7 @@ func (qb *QueryBuilder) BuildTriggersQuery(params TriggersQueryParams) (map[stri
 			},
 		},
 		"aggs": map[string]interface{}{
-			"triggers": map[string]interface{}{
+			"runs": map[string]interface{}{
 				"terms": map[string]interface{}{
 					"field": "involvedObject.name",
 					"size":  limit + params.Offset,
@@ -1143,9 +1143,9 @@ func (qb *QueryBuilder) BuildTriggersQuery(params TriggersQueryParams) (map[stri
 						"first_seen": sortOrder,
 					},
 				},
-				"aggs": triggerSubAggs,
+				"aggs": runSubAggs,
 			},
-			"total_triggers": map[string]interface{}{
+			"total_runs": map[string]interface{}{
 				"cardinality": map[string]interface{}{
 					"field": "involvedObject.name",
 				},
@@ -1156,11 +1156,11 @@ func (qb *QueryBuilder) BuildTriggersQuery(params TriggersQueryParams) (map[stri
 	return query, nil
 }
 
-// BuildRetriesQuery builds an OpenSearch aggregation query to list retries (Pods) for a specific trigger (Job).
+// BuildRetriesQuery builds an OpenSearch aggregation query to list retries (Pods) for a specific run (Job).
 // It queries the kube-events index for both:
 //   - Pod events whose name matches the job name prefix (used for the "retries" aggregation)
-//   - Job events for the trigger itself (used for the "job_reasons" aggregation, which lets the
-//     service derive the parent trigger status and override per-retry status accordingly — see
+//   - Job events for the run itself (used for the "job_reasons" aggregation, which lets the
+//     service derive the parent run status and override per-retry status accordingly — see
 //     the comment in parseRetriesAggregation).
 func (qb *QueryBuilder) BuildRetriesQuery(params RetriesQueryParams) (map[string]interface{}, error) {
 	if params.JobName == "" {

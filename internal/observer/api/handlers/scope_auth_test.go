@@ -32,7 +32,7 @@ func (f *fakeScopeAuthFailedLogsService) QueryLogs(_ context.Context, _ *types.L
 	return nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed)
 }
 
-func (f *fakeScopeAuthFailedLogsService) QueryTriggers(_ context.Context, _ *types.TriggersQueryRequest) (*types.TriggersQueryResponse, error) {
+func (f *fakeScopeAuthFailedLogsService) QueryRuns(_ context.Context, _ *types.RunsQueryRequest) (*types.RunsQueryResponse, error) {
 	return nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed)
 }
 

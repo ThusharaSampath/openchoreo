@@ -71,8 +71,8 @@ func (m *MockLogsQuerier) lastRequest() *types.LogsQueryRequest {
 
 func (m *MockLogsQuerier) reset() { m.requests = nil }
 
-func (m *MockLogsQuerier) QueryTriggers(_ context.Context, _ *types.TriggersQueryRequest) (*types.TriggersQueryResponse, error) {
-	return &types.TriggersQueryResponse{Triggers: []types.TriggerEntry{}}, nil
+func (m *MockLogsQuerier) QueryRuns(_ context.Context, _ *types.RunsQueryRequest) (*types.RunsQueryResponse, error) {
+	return &types.RunsQueryResponse{Runs: []types.RunEntry{}}, nil
 }
 
 func (m *MockLogsQuerier) QueryRetries(_ context.Context, _ string, _ *types.RetriesQueryRequest) (*types.RetriesQueryResponse, error) {

@@ -43,7 +43,7 @@ func (s *logsServiceWithAuthz) QueryLogs(ctx context.Context, req *types.LogsQue
 	return s.internal.QueryLogs(ctx, req)
 }
 
-func (s *logsServiceWithAuthz) QueryTriggers(ctx context.Context, req *types.TriggersQueryRequest) (*types.TriggersQueryResponse, error) {
+func (s *logsServiceWithAuthz) QueryRuns(ctx context.Context, req *types.RunsQueryRequest) (*types.RunsQueryResponse, error) {
 	// Reuse the same authorization check as logs: user must have ViewLogs permission
 	logsReq := &types.LogsQueryRequest{
 		SearchScope: &types.SearchScope{Component: req.SearchScope},
@@ -61,7 +61,7 @@ func (s *logsServiceWithAuthz) QueryTriggers(ctx context.Context, req *types.Tri
 	); err != nil {
 		return nil, err
 	}
-	return s.internal.QueryTriggers(ctx, req)
+	return s.internal.QueryRuns(ctx, req)
 }
 
 func (s *logsServiceWithAuthz) QueryRetries(ctx context.Context, jobName string, req *types.RetriesQueryRequest) (*types.RetriesQueryResponse, error) {
