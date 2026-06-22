@@ -12,7 +12,7 @@ K3D_WP_NAMESPACE := openchoreo-workflow-plane
 K3D_OP_NAMESPACE := openchoreo-observability-plane
 
 # Components that can be built locally
-K3D_BUILD_COMPONENTS := controller openchoreo-api observer cluster-gateway cluster-agent kube-events-collector
+K3D_BUILD_COMPONENTS := controller openchoreo-api observer cluster-gateway cluster-agent
 
 # Helper functions
 define k3d_check_cluster
@@ -33,7 +33,6 @@ k3d.build: ## Build all OpenChoreo components with latest-dev tag
 	@$(MAKE) docker.build.observer TAG=$(OPENCHOREO_IMAGE_TAG)
 	@$(MAKE) docker.build.cluster-gateway TAG=$(OPENCHOREO_IMAGE_TAG)
 	@$(MAKE) docker.build.cluster-agent TAG=$(OPENCHOREO_IMAGE_TAG)
-	@$(MAKE) docker.build.kube-events-collector TAG=$(OPENCHOREO_IMAGE_TAG)
 	@$(call log_success, All components built!)
 
 .PHONY: k3d.build.controller
@@ -56,10 +55,6 @@ k3d.build.cluster-gateway: ## Build cluster-gateway image
 k3d.build.cluster-agent: ## Build cluster-agent image
 	@$(MAKE) docker.build.cluster-agent TAG=$(OPENCHOREO_IMAGE_TAG)
 
-.PHONY: k3d.build.kube-events-collector
-k3d.build.kube-events-collector: ## Build kube-events-collector image
-	@$(MAKE) docker.build.kube-events-collector TAG=$(OPENCHOREO_IMAGE_TAG)
-
 # Image Loading
 .PHONY: k3d.load
 k3d.load: ## Import all images into k3d cluster (bulk load for speed)
@@ -71,7 +66,6 @@ k3d.load: ## Import all images into k3d cluster (bulk load for speed)
 		$(IMAGE_REPO_PREFIX)/observer:$(OPENCHOREO_IMAGE_TAG) \
 		$(IMAGE_REPO_PREFIX)/cluster-gateway:$(OPENCHOREO_IMAGE_TAG) \
 		$(IMAGE_REPO_PREFIX)/cluster-agent:$(OPENCHOREO_IMAGE_TAG) \
-		$(IMAGE_REPO_PREFIX)/kube-events-collector:$(OPENCHOREO_IMAGE_TAG) \
 		--cluster $(K3D_CLUSTER_NAME)
 	@$(call log_success, All images loaded!)
 
@@ -109,13 +103,6 @@ k3d.load.cluster-agent: ## Import cluster-agent image into k3d
 	@$(call log_info, Loading cluster-agent image...)
 	@k3d image import $(IMAGE_REPO_PREFIX)/cluster-agent:$(OPENCHOREO_IMAGE_TAG) --cluster $(K3D_CLUSTER_NAME)
 	@$(call log_success, Cluster-agent image loaded!)
-
-.PHONY: k3d.load.kube-events-collector
-k3d.load.kube-events-collector: ## Import kube-events-collector image into k3d
-	$(call k3d_check_cluster)
-	@$(call log_info, Loading kube-events-collector image...)
-	@k3d image import $(IMAGE_REPO_PREFIX)/kube-events-collector:$(OPENCHOREO_IMAGE_TAG) --cluster $(K3D_CLUSTER_NAME)
-	@$(call log_success, Kube-events-collector image loaded!)
 
 # Uninstall Targets
 .PHONY: k3d.uninstall
