@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -15,39 +14,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openchoreo/openchoreo/internal/observer/api/gen"
+	servicemocks "github.com/openchoreo/openchoreo/internal/observer/service/mocks"
 	"github.com/openchoreo/openchoreo/internal/observer/store/incidententry"
 )
-
-// fakeAlertIncidentService implements service.AlertIncidentService for tests.
-// Only UpdateIncident is exercised by the incident handler tests; the alert/incident
-// query methods are stubs that panic so accidental calls are caught immediately.
-type fakeAlertIncidentService struct {
-	updateResp *gen.IncidentPutResponse
-	updateErr  error
-
-	lastID  string
-	lastReq gen.IncidentPutRequest
-}
-
-func (f *fakeAlertIncidentService) QueryAlerts(_ context.Context, _ gen.AlertsQueryRequest) (*gen.AlertsQueryResponse, error) {
-	panic("unexpected call to QueryAlerts in incident handler test")
-}
-
-func (f *fakeAlertIncidentService) QueryIncidents(_ context.Context, _ gen.IncidentsQueryRequest) (*gen.IncidentsQueryResponse, error) {
-	panic("unexpected call to QueryIncidents in incident handler test")
-}
-
-func (f *fakeAlertIncidentService) UpdateIncident(_ context.Context, id string, req gen.IncidentPutRequest) (*gen.IncidentPutResponse, error) {
-	f.lastID = id
-	f.lastReq = req
-	if f.updateErr != nil {
-		return nil, f.updateErr
-	}
-	return f.updateResp, nil
-}
 
 func noopLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -60,23 +33,31 @@ func TestUpdateIncident_Success(t *testing.T) {
 	triggered := now.Add(-time.Minute)
 
 	respBody := &gen.IncidentPutResponse{
-		IncidentId:           ptrString("inc-1"),
-		AlertId:              ptrString("a-1"),
-		Status:               ptrIncidentPutStatus(gen.IncidentPutResponseStatusAcknowledged),
-		Notes:                ptrString("notes"),
-		Description:          ptrString("desc"),
-		IncidentTriggerAiRca: ptrBool(true),
-		TriggeredAt:          &triggered,
-		AcknowledgedAt:       &now,
+		IncidentId:                    ptrString("inc-1"),
+		AlertId:                       ptrString("a-1"),
+		Status:                        ptrIncidentPutStatus(gen.IncidentPutResponseStatusAcknowledged),
+		Notes:                         ptrString("notes"),
+		Description:                   ptrString("desc"),
+		IncidentTriggerAiRca:          ptrBool(true),
+		IncidentTriggerAiCostAnalysis: ptrBool(false),
+		TriggeredAt:                   &triggered,
+		AcknowledgedAt:                &now,
 	}
 
-	updater := &fakeAlertIncidentService{
-		updateResp: respBody,
-	}
+	var capturedID string
+	var capturedReq gen.IncidentPutRequest
+
+	svc := servicemocks.NewMockAlertIncidentService(t)
+	svc.On("UpdateIncident", mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			capturedID = args.String(1)
+			capturedReq = args.Get(2).(gen.IncidentPutRequest)
+		}).
+		Return(respBody, nil)
 
 	h := &Handler{
 		baseHandler:          baseHandler{logger: noopLogger()},
-		alertIncidentService: updater,
+		alertIncidentService: svc,
 	}
 
 	body := gen.IncidentPutRequest{
@@ -102,21 +83,21 @@ func TestUpdateIncident_Success(t *testing.T) {
 		assert.Contains(t, out, expected)
 	}
 
-	// Assert the fake updater received the correct ID and request.
-	assert.Equal(t, "inc-1", updater.lastID)
-	assert.Equal(t, gen.IncidentPutRequestStatusAcknowledged, updater.lastReq.Status)
+	// Assert the mock received the correct ID and request.
+	assert.Equal(t, "inc-1", capturedID)
+	assert.Equal(t, gen.IncidentPutRequestStatusAcknowledged, capturedReq.Status)
 }
 
 func TestUpdateIncident_NotFound(t *testing.T) {
 	t.Parallel()
 
-	updater := &fakeAlertIncidentService{
-		updateErr: incidententry.ErrIncidentNotFound,
-	}
+	svc := servicemocks.NewMockAlertIncidentService(t)
+	svc.On("UpdateIncident", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, incidententry.ErrIncidentNotFound)
 
 	h := &Handler{
 		baseHandler:          baseHandler{logger: noopLogger()},
-		alertIncidentService: updater,
+		alertIncidentService: svc,
 	}
 
 	req := httptest.NewRequest(http.MethodPut, "/api/v1alpha1/incidents/non-existent", bytes.NewReader([]byte(`{"status":"active"}`)))

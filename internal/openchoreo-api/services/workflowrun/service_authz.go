@@ -5,8 +5,10 @@ package workflowrun
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	openchoreov1alpha1 "github.com/openchoreo/openchoreo/api/v1alpha1"
@@ -16,30 +18,41 @@ import (
 	ocLabels "github.com/openchoreo/openchoreo/internal/labels"
 	"github.com/openchoreo/openchoreo/internal/openchoreo-api/models"
 	"github.com/openchoreo/openchoreo/internal/openchoreo-api/services"
+	"github.com/openchoreo/openchoreo/internal/openchoreo-api/services/component"
 )
 
 const (
 	actionCreateWorkflowRun = "workflowrun:create"
 	actionUpdateWorkflowRun = "workflowrun:update"
 	actionViewWorkflowRun   = "workflowrun:view"
-
 	resourceTypeWorkflowRun = "workflowrun"
 )
 
 // workflowRunServiceWithAuthz wraps a Service and adds authorization checks.
 type workflowRunServiceWithAuthz struct {
-	internal Service
-	authz    *services.AuthzChecker
+	internal  Service
+	authz     *services.AuthzChecker
+	k8sClient client.Client
 }
 
 var _ Service = (*workflowRunServiceWithAuthz)(nil)
 
 // NewServiceWithAuthz creates a workflow run service with authorization checks.
-func NewServiceWithAuthz(k8sClient client.Client, wpClientMgr *kubernetesClient.KubeMultiClientManager, gwClient *gatewayClient.Client, authzPDP authz.PDP, logger *slog.Logger) Service {
+func NewServiceWithAuthz(k8sClient client.Client, planeClientProvider kubernetesClient.WorkflowPlaneClientProvider, gwClient *gatewayClient.Client, authzPDP authz.PDP, logger *slog.Logger) Service {
 	return &workflowRunServiceWithAuthz{
-		internal: NewService(k8sClient, wpClientMgr, gwClient, logger),
-		authz:    services.NewAuthzChecker(authzPDP, logger),
+		internal:  NewService(k8sClient, planeClientProvider, gwClient, logger),
+		authz:     services.NewAuthzChecker(authzPDP, logger),
+		k8sClient: k8sClient,
 	}
+}
+
+// formatWorkflowAttr returns the authz-engine identifier for the Workflow
+// (or ClusterWorkflow) referenced by a WorkflowRun, suitable for the
+// resource.workflow ABAC attribute. An empty kind defaults to ClusterWorkflow
+// to match the WorkflowRunConfig / ComponentWorkflowConfig CRD defaults.
+func formatWorkflowAttr(namespace string, kind openchoreov1alpha1.WorkflowRefKind, name string) string {
+	isClusterScoped := kind == "" || kind == openchoreov1alpha1.WorkflowRefKindClusterWorkflow
+	return services.FormatDualScopedResourceName(namespace, name, isClusterScoped)
 }
 
 // constructHierarchyForAuthzCheck builds a ResourceHierarchy from workflow run labels.
@@ -59,10 +72,15 @@ func constructHierarchyForAuthzCheck(namespaceName string, labels map[string]str
 
 func (s *workflowRunServiceWithAuthz) CreateWorkflowRun(ctx context.Context, namespaceName string, wfRun *openchoreov1alpha1.WorkflowRun) (*openchoreov1alpha1.WorkflowRun, error) {
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionCreateWorkflowRun,
+		Action:       authz.ActionCreateWorkflowRun,
 		ResourceType: resourceTypeWorkflowRun,
 		ResourceID:   wfRun.Name,
 		Hierarchy:    constructHierarchyForAuthzCheck(namespaceName, wfRun.Labels),
+		Context: authz.Context{
+			Resource: authz.ResourceAttribute{
+				Workflow: formatWorkflowAttr(namespaceName, wfRun.Spec.Workflow.Kind, wfRun.Spec.Workflow.Name),
+			},
+		},
 	}); err != nil {
 		return nil, err
 	}
@@ -71,10 +89,15 @@ func (s *workflowRunServiceWithAuthz) CreateWorkflowRun(ctx context.Context, nam
 
 func (s *workflowRunServiceWithAuthz) UpdateWorkflowRun(ctx context.Context, namespaceName string, wfRun *openchoreov1alpha1.WorkflowRun) (*openchoreov1alpha1.WorkflowRun, error) {
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionUpdateWorkflowRun,
+		Action:       authz.ActionUpdateWorkflowRun,
 		ResourceType: resourceTypeWorkflowRun,
 		ResourceID:   wfRun.Name,
 		Hierarchy:    constructHierarchyForAuthzCheck(namespaceName, wfRun.Labels),
+		Context: authz.Context{
+			Resource: authz.ResourceAttribute{
+				Workflow: formatWorkflowAttr(namespaceName, wfRun.Spec.Workflow.Kind, wfRun.Spec.Workflow.Name),
+			},
+		},
 	}); err != nil {
 		return nil, err
 	}
@@ -88,7 +111,7 @@ func (s *workflowRunServiceWithAuthz) ListWorkflowRuns(ctx context.Context, name
 		},
 		func(wr openchoreov1alpha1.WorkflowRun) services.CheckRequest {
 			return services.CheckRequest{
-				Action:       actionViewWorkflowRun,
+				Action:       authz.ActionViewWorkflowRun,
 				ResourceType: resourceTypeWorkflowRun,
 				ResourceID:   wr.Name,
 				Hierarchy:    constructHierarchyForAuthzCheck(namespaceName, wr.Labels),
@@ -103,7 +126,7 @@ func (s *workflowRunServiceWithAuthz) GetWorkflowRun(ctx context.Context, namesp
 		return nil, err
 	}
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionViewWorkflowRun,
+		Action:       authz.ActionViewWorkflowRun,
 		ResourceType: resourceTypeWorkflowRun,
 		ResourceID:   runName,
 		Hierarchy:    constructHierarchyForAuthzCheck(namespaceName, wr.Labels),
@@ -113,63 +136,102 @@ func (s *workflowRunServiceWithAuthz) GetWorkflowRun(ctx context.Context, namesp
 	return wr, nil
 }
 
-func (s *workflowRunServiceWithAuthz) GetWorkflowRunLogs(ctx context.Context, namespaceName, runName, taskName, gatewayURL string, sinceSeconds *int64) ([]models.WorkflowRunLogEntry, error) {
+func (s *workflowRunServiceWithAuthz) DeleteWorkflowRun(ctx context.Context, namespaceName, runName string) error {
 	wr, err := s.internal.GetWorkflowRun(ctx, namespaceName, runName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionViewWorkflowRun,
+		Action:       authz.ActionDeleteWorkflowRun,
 		ResourceType: resourceTypeWorkflowRun,
 		ResourceID:   runName,
 		Hierarchy:    constructHierarchyForAuthzCheck(namespaceName, wr.Labels),
+		Context: authz.Context{
+			Resource: authz.ResourceAttribute{
+				Workflow: formatWorkflowAttr(namespaceName, wr.Spec.Workflow.Kind, wr.Spec.Workflow.Name),
+			},
+		},
 	}); err != nil {
-		return nil, err
+		return err
 	}
-	return s.internal.GetWorkflowRunLogs(ctx, namespaceName, runName, taskName, gatewayURL, sinceSeconds)
+	return s.internal.DeleteWorkflowRun(ctx, namespaceName, runName)
 }
 
-func (s *workflowRunServiceWithAuthz) GetWorkflowRunEvents(ctx context.Context, namespaceName, runName, taskName, gatewayURL string) ([]models.WorkflowRunEventEntry, error) {
+func (s *workflowRunServiceWithAuthz) GetWorkflowRunLogs(ctx context.Context, namespaceName, runName, taskName string, sinceSeconds *int64) ([]models.WorkflowRunLogEntry, error) {
 	wr, err := s.internal.GetWorkflowRun(ctx, namespaceName, runName)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionViewWorkflowRun,
+		Action:       authz.ActionViewWorkflowRun,
 		ResourceType: resourceTypeWorkflowRun,
 		ResourceID:   runName,
 		Hierarchy:    constructHierarchyForAuthzCheck(namespaceName, wr.Labels),
 	}); err != nil {
 		return nil, err
 	}
-	return s.internal.GetWorkflowRunEvents(ctx, namespaceName, runName, taskName, gatewayURL)
+	return s.internal.GetWorkflowRunLogs(ctx, namespaceName, runName, taskName, sinceSeconds)
 }
 
-func (s *workflowRunServiceWithAuthz) GetWorkflowRunStatus(ctx context.Context, namespaceName, runName, gatewayURL string) (*models.WorkflowRunStatusResponse, error) {
+func (s *workflowRunServiceWithAuthz) GetWorkflowRunEvents(ctx context.Context, namespaceName, runName, taskName string) ([]models.WorkflowRunEventEntry, error) {
 	wr, err := s.internal.GetWorkflowRun(ctx, namespaceName, runName)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionViewWorkflowRun,
+		Action:       authz.ActionViewWorkflowRun,
 		ResourceType: resourceTypeWorkflowRun,
 		ResourceID:   runName,
 		Hierarchy:    constructHierarchyForAuthzCheck(namespaceName, wr.Labels),
 	}); err != nil {
 		return nil, err
 	}
-	return s.internal.GetWorkflowRunStatus(ctx, namespaceName, runName, gatewayURL)
+	return s.internal.GetWorkflowRunEvents(ctx, namespaceName, runName, taskName)
+}
+
+func (s *workflowRunServiceWithAuthz) GetWorkflowRunStatus(ctx context.Context, namespaceName, runName string) (*models.WorkflowRunStatusResponse, error) {
+	wr, err := s.internal.GetWorkflowRun(ctx, namespaceName, runName)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.authz.Check(ctx, services.CheckRequest{
+		Action:       authz.ActionViewWorkflowRun,
+		ResourceType: resourceTypeWorkflowRun,
+		ResourceID:   runName,
+		Hierarchy:    constructHierarchyForAuthzCheck(namespaceName, wr.Labels),
+	}); err != nil {
+		return nil, err
+	}
+	return s.internal.GetWorkflowRunStatus(ctx, namespaceName, runName)
 }
 
 func (s *workflowRunServiceWithAuthz) TriggerWorkflow(ctx context.Context, namespaceName, projectName, componentName, commit string) (*models.WorkflowRunTriggerResponse, error) {
+	// Resolve the component's workflow reference for the authz check
+	var workflowAttr string
+	var comp openchoreov1alpha1.Component
+	if err := s.k8sClient.Get(ctx, client.ObjectKey{Name: componentName, Namespace: namespaceName}, &comp); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, component.ErrComponentNotFound
+		}
+		return nil, fmt.Errorf("failed to resolve component %s/%s for authz check: %w", namespaceName, componentName, err)
+	}
+	if comp.Spec.Workflow != nil {
+		workflowAttr = formatWorkflowAttr(namespaceName, comp.Spec.Workflow.Kind, comp.Spec.Workflow.Name)
+	}
+
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionCreateWorkflowRun,
+		Action:       authz.ActionCreateWorkflowRun,
 		ResourceType: resourceTypeWorkflowRun,
 		ResourceID:   componentName,
 		Hierarchy: authz.ResourceHierarchy{
 			Namespace: namespaceName,
 			Project:   projectName,
 			Component: componentName,
+		},
+		Context: authz.Context{
+			Resource: authz.ResourceAttribute{
+				Workflow: workflowAttr,
+			},
 		},
 	}); err != nil {
 		return nil, err

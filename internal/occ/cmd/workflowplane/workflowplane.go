@@ -13,31 +13,28 @@ import (
 
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/pagination"
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/utils"
+	"github.com/openchoreo/openchoreo/internal/occ/cmdutil"
 	"github.com/openchoreo/openchoreo/internal/occ/resources/client"
-	"github.com/openchoreo/openchoreo/internal/occ/validation"
 	"github.com/openchoreo/openchoreo/internal/openchoreo-api/api/gen"
 )
 
 // WorkflowPlane implements workflow plane operations
-type WorkflowPlane struct{}
+type WorkflowPlane struct {
+	client client.Interface
+}
 
 // New creates a new workflow plane implementation
-func New() *WorkflowPlane {
-	return &WorkflowPlane{}
+func New(c client.Interface) *WorkflowPlane {
+	return &WorkflowPlane{client: c}
 }
 
 // List lists all workflow planes in a namespace
 func (b *WorkflowPlane) List(params ListParams) error {
-	if err := validation.ValidateParams(validation.CmdList, validation.ResourceWorkflowPlane, params); err != nil {
+	if err := cmdutil.RequireFields("list", "workflowplane", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.WorkflowPlane, string, error) {
 		p := &gen.ListWorkflowPlanesParams{}
@@ -45,7 +42,7 @@ func (b *WorkflowPlane) List(params ListParams) error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := c.ListWorkflowPlanes(ctx, params.Namespace, p)
+		result, err := b.client.ListWorkflowPlanes(ctx, params.Namespace, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -63,18 +60,13 @@ func (b *WorkflowPlane) List(params ListParams) error {
 
 // Get retrieves a single workflow plane and outputs it as YAML
 func (b *WorkflowPlane) Get(params GetParams) error {
-	if err := validation.ValidateParams(validation.CmdGet, validation.ResourceWorkflowPlane, params); err != nil {
+	if err := cmdutil.RequireFields("get", "workflowplane", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := c.GetWorkflowPlane(ctx, params.Namespace, params.WorkflowPlaneName)
+	result, err := b.client.GetWorkflowPlane(ctx, params.Namespace, params.WorkflowPlaneName)
 	if err != nil {
 		return err
 	}
@@ -90,18 +82,13 @@ func (b *WorkflowPlane) Get(params GetParams) error {
 
 // Delete deletes a single workflow plane
 func (b *WorkflowPlane) Delete(params DeleteParams) error {
-	if err := validation.ValidateParams(validation.CmdDelete, validation.ResourceWorkflowPlane, params); err != nil {
+	if err := cmdutil.RequireFields("delete", "workflowplane", map[string]string{"namespace": params.Namespace, "name": params.WorkflowPlaneName}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := c.DeleteWorkflowPlane(ctx, params.Namespace, params.WorkflowPlaneName); err != nil {
+	if err := b.client.DeleteWorkflowPlane(ctx, params.Namespace, params.WorkflowPlaneName); err != nil {
 		return err
 	}
 

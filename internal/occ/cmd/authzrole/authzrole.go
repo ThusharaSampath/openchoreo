@@ -13,31 +13,28 @@ import (
 
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/pagination"
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/utils"
+	"github.com/openchoreo/openchoreo/internal/occ/cmdutil"
 	"github.com/openchoreo/openchoreo/internal/occ/resources/client"
-	"github.com/openchoreo/openchoreo/internal/occ/validation"
 	"github.com/openchoreo/openchoreo/internal/openchoreo-api/api/gen"
 )
 
 // AuthzRole implements authz role operations
-type AuthzRole struct{}
+type AuthzRole struct {
+	client client.Interface
+}
 
 // New creates a new authz role implementation
-func New() *AuthzRole {
-	return &AuthzRole{}
+func New(c client.Interface) *AuthzRole {
+	return &AuthzRole{client: c}
 }
 
 // List lists all authz roles in a namespace
 func (r *AuthzRole) List(params ListParams) error {
-	if err := validation.ValidateParams(validation.CmdList, validation.ResourceAuthzRole, params); err != nil {
+	if err := cmdutil.RequireFields("list", "authzrole", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.AuthzRole, string, error) {
 		p := &gen.ListNamespaceRolesParams{}
@@ -45,7 +42,7 @@ func (r *AuthzRole) List(params ListParams) error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := c.ListNamespaceRoles(ctx, params.Namespace, p)
+		result, err := r.client.ListNamespaceRoles(ctx, params.Namespace, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -63,18 +60,13 @@ func (r *AuthzRole) List(params ListParams) error {
 
 // Get retrieves a single authz role and outputs it as YAML
 func (r *AuthzRole) Get(params GetParams) error {
-	if err := validation.ValidateParams(validation.CmdGet, validation.ResourceAuthzRole, params); err != nil {
+	if err := cmdutil.RequireFields("get", "authzrole", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := c.GetNamespaceRole(ctx, params.Namespace, params.Name)
+	result, err := r.client.GetNamespaceRole(ctx, params.Namespace, params.Name)
 	if err != nil {
 		return fmt.Errorf("failed to get authz role: %w", err)
 	}
@@ -90,18 +82,13 @@ func (r *AuthzRole) Get(params GetParams) error {
 
 // Delete deletes a single authz role
 func (r *AuthzRole) Delete(params DeleteParams) error {
-	if err := validation.ValidateParams(validation.CmdDelete, validation.ResourceAuthzRole, params); err != nil {
+	if err := cmdutil.RequireFields("delete", "authzrole", map[string]string{"namespace": params.Namespace, "name": params.Name}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := c.DeleteNamespaceRole(ctx, params.Namespace, params.Name); err != nil {
+	if err := r.client.DeleteNamespaceRole(ctx, params.Namespace, params.Name); err != nil {
 		return fmt.Errorf("failed to delete authz role: %w", err)
 	}
 

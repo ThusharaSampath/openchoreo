@@ -13,31 +13,28 @@ import (
 
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/pagination"
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/utils"
+	"github.com/openchoreo/openchoreo/internal/occ/cmdutil"
 	"github.com/openchoreo/openchoreo/internal/occ/resources/client"
-	"github.com/openchoreo/openchoreo/internal/occ/validation"
 	"github.com/openchoreo/openchoreo/internal/openchoreo-api/api/gen"
 )
 
 // Environment implements environment operations
-type Environment struct{}
+type Environment struct {
+	client client.Interface
+}
 
 // New creates a new environment implementation
-func New() *Environment {
-	return &Environment{}
+func New(c client.Interface) *Environment {
+	return &Environment{client: c}
 }
 
 // List lists all environments in a namespace
 func (e *Environment) List(params ListParams) error {
-	if err := validation.ValidateParams(validation.CmdList, validation.ResourceEnvironment, params); err != nil {
+	if err := cmdutil.RequireFields("list", "environment", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.Environment, string, error) {
 		p := &gen.ListEnvironmentsParams{}
@@ -45,7 +42,7 @@ func (e *Environment) List(params ListParams) error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := c.ListEnvironments(ctx, params.Namespace, p)
+		result, err := e.client.ListEnvironments(ctx, params.Namespace, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -64,18 +61,13 @@ func (e *Environment) List(params ListParams) error {
 
 // Get retrieves a single environment and outputs it as YAML
 func (e *Environment) Get(params GetParams) error {
-	if err := validation.ValidateParams(validation.CmdGet, validation.ResourceEnvironment, params); err != nil {
+	if err := cmdutil.RequireFields("get", "environment", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := c.GetEnvironment(ctx, params.Namespace, params.EnvironmentName)
+	result, err := e.client.GetEnvironment(ctx, params.Namespace, params.EnvironmentName)
 	if err != nil {
 		return err
 	}
@@ -91,18 +83,13 @@ func (e *Environment) Get(params GetParams) error {
 
 // Delete deletes a single environment
 func (e *Environment) Delete(params DeleteParams) error {
-	if err := validation.ValidateParams(validation.CmdDelete, validation.ResourceEnvironment, params); err != nil {
+	if err := cmdutil.RequireFields("delete", "environment", map[string]string{"namespace": params.Namespace, "name": params.EnvironmentName}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := c.DeleteEnvironment(ctx, params.Namespace, params.EnvironmentName); err != nil {
+	if err := e.client.DeleteEnvironment(ctx, params.Namespace, params.EnvironmentName); err != nil {
 		return err
 	}
 

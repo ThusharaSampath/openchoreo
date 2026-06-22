@@ -162,6 +162,27 @@ Cluster Gateway resource name
 {{- end }}
 
 {{/*
+Cluster Gateway must run as a singleton.
+
+The gateway keeps every cluster agent's live WebSocket connection (and the
+authorization state derived from its client certificate) in process memory via
+the in-memory ConnectionManager. That state is not shared between pods, so
+running more than one replica would split agent connections across pods: a
+request routed to a pod that does not hold the target agent's connection
+fails. Until the gateway supports shared/sticky connection state it must be
+deployed with exactly one replica.
+
+Include this from any template that consumes clusterGateway.replicas to
+fail-fast (at `helm template`/`helm install` time) on an invalid value.
+*/}}
+{{- define "openchoreo-control-plane.clusterGateway.validateReplicas" -}}
+{{- $replicas := int .Values.clusterGateway.replicas -}}
+{{- if ne $replicas 1 -}}
+{{- fail (printf "\n\nINVALID VALUE: clusterGateway.replicas=%d\n\nThe cluster gateway must run as a singleton (clusterGateway.replicas=1).\nIt holds cluster-agent WebSocket connections in process memory, so multiple\nreplicas would split that connection state across pods and break agent\nconnectivity. Set clusterGateway.replicas=1 (the default).\n" $replicas) -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Cluster Gateway service account name
 */}}
 {{- define "openchoreo-control-plane.clusterGateway.serviceAccountName" -}}
@@ -173,23 +194,55 @@ Cluster Gateway service account name
 {{- end }}
 
 {{/*
+Event-forwarder resource name
+*/}}
+{{- define "openchoreo-control-plane.event-forwarder.name" -}}
+{{- default "event-forwarder" .Values.eventForwarder.name }}
+{{- end }}
+
+{{/*
+Event-forwarder service account name
+*/}}
+{{- define "openchoreo-control-plane.event-forwarder.serviceAccountName" -}}
+{{- if .Values.eventForwarder.serviceAccount.create }}
+{{- default "event-forwarder" .Values.eventForwarder.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.eventForwarder.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Portal Assistant resource name
+*/}}
+{{- define "openchoreo-control-plane.portalAssistant.name" -}}
+{{- default "portal-assistant" .Values.portalAssistant.name }}
+{{- end }}
+
+{{/*
+Portal Assistant service account name
+*/}}
+{{- define "openchoreo-control-plane.portalAssistant.serviceAccountName" -}}
+{{- default "portal-assistant" .Values.portalAssistant.name }}
+{{- end }}
+
+{{/*
 Validate that placeholder .invalid hostnames have been replaced with real domains.
 */}}
 {{- define "openchoreo-control-plane.validateHostnames" -}}
 {{- $errors := list -}}
-{{- if contains ".invalid" (join "," .Values.openchoreoApi.http.hostnames) -}}
+{{- if and .Values.gateway.enabled .Values.openchoreoApi.enabled .Values.openchoreoApi.http.enabled (contains ".invalid" (join "," .Values.openchoreoApi.http.hostnames)) -}}
   {{- $errors = append $errors "openchoreoApi.http.hostnames contains placeholder domain (.invalid)" -}}
 {{- end -}}
-{{- if contains ".invalid" (join "," .Values.backstage.http.hostnames) -}}
+{{- if and .Values.gateway.enabled .Values.backstage.enabled .Values.backstage.http.enabled (contains ".invalid" (join "," .Values.backstage.http.hostnames)) -}}
   {{- $errors = append $errors "backstage.http.hostnames contains placeholder domain (.invalid)" -}}
 {{- end -}}
-{{- if contains ".invalid" .Values.backstage.baseUrl -}}
+{{- if and .Values.backstage.enabled (contains ".invalid" .Values.backstage.baseUrl) -}}
   {{- $errors = append $errors "backstage.baseUrl contains placeholder domain (.invalid)" -}}
 {{- end -}}
-{{- if and .Values.gateway.tls.enabled (contains ".invalid" .Values.gateway.tls.hostname) -}}
+{{- if and .Values.gateway.enabled .Values.gateway.tls.enabled (contains ".invalid" .Values.gateway.tls.hostname) -}}
   {{- $errors = append $errors "gateway.tls.hostname contains placeholder domain (.invalid)" -}}
 {{- end -}}
-{{- if contains ".invalid" .Values.security.oidc.issuer -}}
+{{- if and .Values.security.enabled (contains ".invalid" .Values.security.oidc.issuer) -}}
   {{- $errors = append $errors "security.oidc.issuer contains placeholder domain (.invalid)" -}}
 {{- end -}}
 {{- if and .Values.backstage.enabled (not .Values.backstage.secretName) -}}

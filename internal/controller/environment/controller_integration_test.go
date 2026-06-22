@@ -20,7 +20,7 @@ import (
 )
 
 // newTestReconciler returns a Reconciler wired to the envtest API server.
-// K8sClientMgr is intentionally nil — it is only accessed when getDPClient
+// PlaneClientProvider is intentionally nil — it is only accessed when getDPClient
 // resolves a DataPlane or ClusterDataPlane; tests that don't exercise that
 // path (e.g., DataPlane not found) are safe with nil.
 func newTestReconciler() *Reconciler {
@@ -569,9 +569,18 @@ var _ = Describe("Environment Controller", func() {
 				Expect(result.RequeueAfter).To(Equal(5 * time.Second))
 
 				By("verifying the release binding is being deleted")
+				// Eventually rather than a single Get+expect: on slow CI
+				// runners the envtest apiserver can race the test, returning
+				// the rb's pre-delete state in the ~ms after r.Delete()
+				// resolved. Matches the polling pattern used at the bottom
+				// of this Context (waiting for the rb to be gone).
 				rb := &openchoreov1alpha1.ReleaseBinding{}
-				Expect(k8sClient.Get(ctx, rbNN, rb)).To(Succeed())
-				Expect(rb.DeletionTimestamp).NotTo(BeNil())
+				Eventually(func() *metav1.Time {
+					if err := k8sClient.Get(ctx, rbNN, rb); err != nil {
+						return nil
+					}
+					return rb.DeletionTimestamp
+				}, "5s", "100ms").ShouldNot(BeNil())
 
 				By("verifying the ReleaseBindingsPending condition is set")
 				env := &openchoreov1alpha1.Environment{}
@@ -595,9 +604,18 @@ var _ = Describe("Environment Controller", func() {
 				Expect(result.RequeueAfter).To(Equal(5 * time.Second))
 
 				By("simulating ReleaseBinding controller: removing finalizer so deletion completes")
+				// Same race as the prior test in this Context — the
+				// controller's Delete just returned, but the apiserver may
+				// not have surfaced the DeletionTimestamp on a follow-up
+				// Get yet. Poll until it does, then proceed to strip the
+				// finalizer.
 				rb := &openchoreov1alpha1.ReleaseBinding{}
-				Expect(k8sClient.Get(ctx, rbNN, rb)).To(Succeed())
-				Expect(rb.DeletionTimestamp).NotTo(BeNil())
+				Eventually(func() *metav1.Time {
+					if err := k8sClient.Get(ctx, rbNN, rb); err != nil {
+						return nil
+					}
+					return rb.DeletionTimestamp
+				}, "5s", "100ms").ShouldNot(BeNil())
 				controllerutil.RemoveFinalizer(rb, "openchoreo.dev/releasebinding-cleanup")
 				Expect(k8sClient.Update(ctx, rb)).To(Succeed())
 				Eventually(func() bool {
@@ -771,11 +789,11 @@ var _ = Describe("Environment Controller", func() {
 				_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 				Expect(err).NotTo(HaveOccurred())
 
-				By("second reconcile — ClusterDataPlane exists but K8sClientMgr is nil, returns error")
+				By("second reconcile — ClusterDataPlane exists but PlaneClientProvider is nil, returns error")
 				_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).NotTo(ContainSubstring("failed to make environment context"))
-				Expect(err.Error()).To(ContainSubstring("DP client"))
+				Expect(err.Error()).To(ContainSubstring("dataplane client"))
 			})
 		})
 
@@ -837,6 +855,187 @@ var _ = Describe("Environment Controller", func() {
 				rb := &openchoreov1alpha1.ReleaseBinding{}
 				Expect(k8sClient.Get(ctx, otherRBNN, rb)).To(Succeed())
 				Expect(rb.DeletionTimestamp).To(BeNil())
+			})
+		})
+
+		Context("waiting for project release bindings during finalization", func() {
+			var nn types.NamespacedName
+			var prbNN types.NamespacedName
+
+			BeforeEach(func() {
+				nn = types.NamespacedName{Namespace: ns, Name: "env-prb-cleanup"}
+				env := &openchoreov1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       nn.Name,
+						Namespace:  ns,
+						Finalizers: []string{EnvCleanupFinalizer},
+					},
+					Spec: openchoreov1alpha1.EnvironmentSpec{IsProduction: false},
+				}
+				Expect(k8sClient.Create(ctx, env)).To(Succeed())
+
+				prbNN = types.NamespacedName{Namespace: ns, Name: "prb-for-env-cleanup"}
+				prb := &openchoreov1alpha1.ProjectReleaseBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       prbNN.Name,
+						Namespace:  ns,
+						Finalizers: []string{"openchoreo.dev/projectreleasebinding-cleanup"},
+					},
+					Spec: openchoreov1alpha1.ProjectReleaseBindingSpec{
+						Owner: openchoreov1alpha1.ProjectReleaseBindingOwner{
+							ProjectName: "test-project",
+						},
+						Environment: nn.Name,
+					},
+				}
+				Expect(k8sClient.Create(ctx, prb)).To(Succeed())
+
+				Expect(k8sClient.Delete(ctx, env)).To(Succeed())
+			})
+
+			AfterEach(func() {
+				forceDeleteEnv(nn)
+				// Clean up ProjectReleaseBinding if it still exists
+				prb := &openchoreov1alpha1.ProjectReleaseBinding{}
+				if err := k8sClient.Get(ctx, prbNN, prb); err == nil {
+					controllerutil.RemoveFinalizer(prb, "openchoreo.dev/projectreleasebinding-cleanup")
+					_ = k8sClient.Update(ctx, prb)
+					_ = k8sClient.Delete(ctx, prb)
+				}
+			})
+
+			It("should delete project release bindings and requeue while they are still present", func() {
+				r := newTestReconciler()
+
+				By("first reconcile — sets Finalizing condition")
+				result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.Requeue).To(BeFalse())
+
+				By("second reconcile — deletes project release binding and requeues")
+				result, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.RequeueAfter).To(Equal(5 * time.Second))
+
+				By("verifying the project release binding is being deleted")
+				// Eventually rather than a single Get+expect: on slow CI runners
+				// the envtest apiserver can race the test, returning the prb's
+				// pre-delete state in the ~ms after r.Delete() resolved.
+				prb := &openchoreov1alpha1.ProjectReleaseBinding{}
+				Eventually(func() *metav1.Time {
+					if err := k8sClient.Get(ctx, prbNN, prb); err != nil {
+						return nil
+					}
+					return prb.DeletionTimestamp
+				}, "5s", "100ms").ShouldNot(BeNil())
+
+				By("verifying the ReleaseBindingsPending condition is set")
+				env := &openchoreov1alpha1.Environment{}
+				Expect(k8sClient.Get(ctx, nn, env)).To(Succeed())
+				cond := apimeta.FindStatusCondition(env.Status.Conditions, ConditionReady.String())
+				Expect(cond).NotTo(BeNil())
+				Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				Expect(cond.Reason).To(Equal(string(ReasonReleaseBindingsPending)))
+			})
+
+			It("should proceed with finalization after project release bindings are deleted", func() {
+				r := newTestReconciler()
+
+				By("first reconcile — sets Finalizing condition")
+				_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+				Expect(err).NotTo(HaveOccurred())
+
+				By("second reconcile — deletes the project release binding and requeues")
+				result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.RequeueAfter).To(Equal(5 * time.Second))
+
+				By("simulating ProjectReleaseBinding controller: removing finalizer so deletion completes")
+				prb := &openchoreov1alpha1.ProjectReleaseBinding{}
+				Eventually(func() *metav1.Time {
+					if err := k8sClient.Get(ctx, prbNN, prb); err != nil {
+						return nil
+					}
+					return prb.DeletionTimestamp
+				}, "5s", "100ms").ShouldNot(BeNil())
+				controllerutil.RemoveFinalizer(prb, "openchoreo.dev/projectreleasebinding-cleanup")
+				Expect(k8sClient.Update(ctx, prb)).To(Succeed())
+				Eventually(func() bool {
+					return apierrors.IsNotFound(k8sClient.Get(ctx, prbNN, &openchoreov1alpha1.ProjectReleaseBinding{}))
+				}, "5s", "100ms").Should(BeTrue())
+
+				By("third reconcile — no bindings, Finalizing guard passes, proceeds to namespace cleanup")
+				_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+				Expect(err).NotTo(HaveOccurred())
+
+				By("fourth reconcile — proceeds to namespace cleanup (DataPlane not found, removes finalizer)")
+				_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+				Expect(err).NotTo(HaveOccurred())
+
+				By("verifying the environment is gone")
+				Eventually(func() bool {
+					return apierrors.IsNotFound(k8sClient.Get(ctx, nn, &openchoreov1alpha1.Environment{}))
+				}, "5s", "100ms").Should(BeTrue())
+			})
+		})
+
+		Context("project release bindings for other environments are not deleted", func() {
+			var nn types.NamespacedName
+			var otherPRBNN types.NamespacedName
+
+			BeforeEach(func() {
+				nn = types.NamespacedName{Namespace: ns, Name: "env-prb-isolation"}
+				env := &openchoreov1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       nn.Name,
+						Namespace:  ns,
+						Finalizers: []string{EnvCleanupFinalizer},
+					},
+					Spec: openchoreov1alpha1.EnvironmentSpec{IsProduction: false},
+				}
+				Expect(k8sClient.Create(ctx, env)).To(Succeed())
+
+				// ProjectReleaseBinding for a DIFFERENT environment
+				otherPRBNN = types.NamespacedName{Namespace: ns, Name: "prb-other-env"}
+				prb := &openchoreov1alpha1.ProjectReleaseBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      otherPRBNN.Name,
+						Namespace: ns,
+					},
+					Spec: openchoreov1alpha1.ProjectReleaseBindingSpec{
+						Owner: openchoreov1alpha1.ProjectReleaseBindingOwner{
+							ProjectName: "test-project",
+						},
+						Environment: "some-other-environment",
+					},
+				}
+				Expect(k8sClient.Create(ctx, prb)).To(Succeed())
+
+				Expect(k8sClient.Delete(ctx, env)).To(Succeed())
+			})
+
+			AfterEach(func() {
+				forceDeleteEnv(nn)
+				_ = k8sClient.Delete(ctx, &openchoreov1alpha1.ProjectReleaseBinding{
+					ObjectMeta: metav1.ObjectMeta{Name: otherPRBNN.Name, Namespace: ns},
+				})
+			})
+
+			It("should not delete project release bindings belonging to other environments", func() {
+				r := newTestReconciler()
+
+				By("first reconcile — sets Finalizing condition")
+				_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+				Expect(err).NotTo(HaveOccurred())
+
+				By("second reconcile — no matching bindings, proceeds to namespace cleanup")
+				_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
+				Expect(err).NotTo(HaveOccurred())
+
+				By("verifying the other environment's project release binding is untouched")
+				prb := &openchoreov1alpha1.ProjectReleaseBinding{}
+				Expect(k8sClient.Get(ctx, otherPRBNN, prb)).To(Succeed())
+				Expect(prb.DeletionTimestamp).To(BeNil())
 			})
 		})
 	})

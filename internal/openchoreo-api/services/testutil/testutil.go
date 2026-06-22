@@ -50,6 +50,7 @@ func statusSubresourceObjects() []client.Object {
 		&openchoreov1alpha1.ClusterComponentType{},
 		&openchoreov1alpha1.ClusterDataPlane{},
 		&openchoreov1alpha1.ClusterObservabilityPlane{},
+		&openchoreov1alpha1.ClusterResourceType{},
 		&openchoreov1alpha1.ClusterTrait{},
 		&openchoreov1alpha1.ClusterWorkflow{},
 		&openchoreov1alpha1.Component{},
@@ -62,6 +63,10 @@ func statusSubresourceObjects() []client.Object {
 		&openchoreov1alpha1.ObservabilityPlane{},
 		&openchoreov1alpha1.Project{},
 		&openchoreov1alpha1.ReleaseBinding{},
+		&openchoreov1alpha1.Resource{},
+		&openchoreov1alpha1.ResourceRelease{},
+		&openchoreov1alpha1.ResourceReleaseBinding{},
+		&openchoreov1alpha1.ResourceType{},
 		&openchoreov1alpha1.SecretReference{},
 		&openchoreov1alpha1.Trait{},
 		&openchoreov1alpha1.Workflow{},
@@ -149,6 +154,26 @@ func NewClusterComponentType(name string) *openchoreov1alpha1.ClusterComponentTy
 			Name: name,
 		},
 		Spec: defaultClusterComponentTypeSpec(),
+	}
+}
+
+// NewClusterResourceType creates a ClusterResourceType test fixture.
+func NewClusterResourceType(name string) *openchoreov1alpha1.ClusterResourceType {
+	return &openchoreov1alpha1.ClusterResourceType{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: defaultClusterResourceTypeSpec(),
+	}
+}
+
+// NewClusterProjectType creates a ClusterProjectType test fixture.
+func NewClusterProjectType(name string) *openchoreov1alpha1.ClusterProjectType {
+	return &openchoreov1alpha1.ClusterProjectType{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: defaultClusterProjectTypeSpec(),
 	}
 }
 
@@ -253,6 +278,121 @@ func NewComponentType(namespace, name string) *openchoreov1alpha1.ComponentType 
 			Namespace: namespace,
 		},
 		Spec: defaultComponentTypeSpec(),
+	}
+}
+
+// NewResourceType creates a ResourceType test fixture.
+func NewResourceType(namespace, name string) *openchoreov1alpha1.ResourceType {
+	return &openchoreov1alpha1.ResourceType{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: defaultResourceTypeSpec(),
+	}
+}
+
+// NewProjectType creates a ProjectType test fixture.
+func NewProjectType(namespace, name string) *openchoreov1alpha1.ProjectType {
+	return &openchoreov1alpha1.ProjectType{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: defaultProjectTypeSpec(),
+	}
+}
+
+// NewResource creates a Resource test fixture.
+func NewResource(namespace, projectName, name string) *openchoreov1alpha1.Resource {
+	return &openchoreov1alpha1.Resource{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: openchoreov1alpha1.ResourceSpec{
+			Owner: openchoreov1alpha1.ResourceOwner{
+				ProjectName: projectName,
+			},
+			Type: openchoreov1alpha1.ResourceTypeRef{
+				Kind: openchoreov1alpha1.ResourceTypeRefKindResourceType,
+				Name: "mysql",
+			},
+		},
+	}
+}
+
+// NewResourceRelease creates a ResourceRelease test fixture.
+func NewResourceRelease(namespace, projectName, resourceName, name string) *openchoreov1alpha1.ResourceRelease {
+	return &openchoreov1alpha1.ResourceRelease{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: openchoreov1alpha1.ResourceReleaseSpec{
+			Owner: openchoreov1alpha1.ResourceReleaseOwner{
+				ProjectName:  projectName,
+				ResourceName: resourceName,
+			},
+			ResourceType: openchoreov1alpha1.ResourceReleaseResourceType{
+				Kind: openchoreov1alpha1.ResourceTypeRefKindResourceType,
+				Name: "mysql",
+				Spec: defaultResourceTypeSpec(),
+			},
+		},
+	}
+}
+
+// NewProjectRelease creates a ProjectRelease test fixture.
+func NewProjectRelease(namespace, projectName, name string) *openchoreov1alpha1.ProjectRelease {
+	return &openchoreov1alpha1.ProjectRelease{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: openchoreov1alpha1.ProjectReleaseSpec{
+			Owner: openchoreov1alpha1.ProjectReleaseOwner{
+				ProjectName: projectName,
+			},
+			ProjectType: openchoreov1alpha1.ProjectReleaseProjectType{
+				Kind: openchoreov1alpha1.ProjectTypeRefKindClusterProjectType,
+				Name: "default",
+				Spec: defaultProjectTypeSpec(),
+			},
+		},
+	}
+}
+
+// NewProjectReleaseBinding creates a ProjectReleaseBinding test fixture.
+func NewProjectReleaseBinding(namespace, projectName, environment, name string) *openchoreov1alpha1.ProjectReleaseBinding {
+	return &openchoreov1alpha1.ProjectReleaseBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: openchoreov1alpha1.ProjectReleaseBindingSpec{
+			Owner: openchoreov1alpha1.ProjectReleaseBindingOwner{
+				ProjectName: projectName,
+			},
+			Environment: environment,
+		},
+	}
+}
+
+// NewResourceReleaseBinding creates a ResourceReleaseBinding test fixture.
+func NewResourceReleaseBinding(namespace, projectName, resourceName, environment, name string) *openchoreov1alpha1.ResourceReleaseBinding {
+	return &openchoreov1alpha1.ResourceReleaseBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: openchoreov1alpha1.ResourceReleaseBindingSpec{
+			Owner: openchoreov1alpha1.ResourceReleaseBindingOwner{
+				ProjectName:  projectName,
+				ResourceName: resourceName,
+			},
+			Environment: environment,
+		},
 	}
 }
 
@@ -457,6 +597,44 @@ func defaultClusterComponentTypeSpec() openchoreov1alpha1.ClusterComponentTypeSp
 		WorkloadType: "deployment",
 		Resources: []openchoreov1alpha1.ResourceTemplate{
 			testResourceTemplate("deployment"),
+		},
+	}
+}
+
+func defaultClusterProjectTypeSpec() openchoreov1alpha1.ClusterProjectTypeSpec {
+	return openchoreov1alpha1.ClusterProjectTypeSpec{
+		Resources: []openchoreov1alpha1.ResourceTemplate{
+			testResourceTemplate("namespace"),
+		},
+	}
+}
+
+func defaultProjectTypeSpec() openchoreov1alpha1.ProjectTypeSpec {
+	return openchoreov1alpha1.ProjectTypeSpec{
+		Resources: []openchoreov1alpha1.ResourceTemplate{
+			testResourceTemplate("namespace"),
+		},
+	}
+}
+
+func defaultClusterResourceTypeSpec() openchoreov1alpha1.ClusterResourceTypeSpec {
+	return openchoreov1alpha1.ClusterResourceTypeSpec{
+		Resources: []openchoreov1alpha1.ResourceTypeManifest{
+			{
+				ID:       "claim",
+				Template: testRunTemplate(),
+			},
+		},
+	}
+}
+
+func defaultResourceTypeSpec() openchoreov1alpha1.ResourceTypeSpec {
+	return openchoreov1alpha1.ResourceTypeSpec{
+		Resources: []openchoreov1alpha1.ResourceTypeManifest{
+			{
+				ID:       "claim",
+				Template: testRunTemplate(),
+			},
 		},
 	}
 }

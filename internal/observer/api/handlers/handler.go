@@ -45,8 +45,9 @@ func (b *baseHandler) writeErrorResponse(
 // than bare service instances.
 type Handler struct {
 	baseHandler
-	healthService        *service.HealthService
+	healthService        service.HealthChecker
 	logsService          service.LogsQuerier
+	eventsService        service.EventsQuerier
 	metricsService       service.MetricsQuerier
 	alertIncidentService service.AlertIncidentService
 	tracesService        service.TracesQuerier
@@ -54,8 +55,9 @@ type Handler struct {
 
 // NewHandler creates a new public Handler instance.
 func NewHandler(
-	healthService *service.HealthService,
+	healthService service.HealthChecker,
 	logsService service.LogsQuerier,
+	eventsService service.EventsQuerier,
 	metricsService service.MetricsQuerier,
 	alertIncidentService service.AlertIncidentService,
 	tracesService service.TracesQuerier,
@@ -65,6 +67,7 @@ func NewHandler(
 		baseHandler:          baseHandler{logger: logger},
 		healthService:        healthService,
 		logsService:          logsService,
+		eventsService:        eventsService,
 		metricsService:       metricsService,
 		alertIncidentService: alertIncidentService,
 		tracesService:        tracesService,
@@ -72,16 +75,15 @@ func NewHandler(
 }
 
 // InternalHandler contains the HTTP handlers that run on the internal port (8081)
-// without JWT authentication. Only the concrete *AlertService is needed here because
-// these handlers manage alert rules and process incoming webhooks.
+// without JWT authentication. It manages alert rules and processes incoming webhooks.
 type InternalHandler struct {
 	baseHandler
-	alertService *service.AlertService
+	alertService service.AlertRuleService
 }
 
 // NewInternalHandler creates a new InternalHandler instance.
 func NewInternalHandler(
-	alertService *service.AlertService,
+	alertService service.AlertRuleService,
 	logger *slog.Logger,
 ) *InternalHandler {
 	return &InternalHandler{

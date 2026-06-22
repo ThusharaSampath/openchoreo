@@ -1,0 +1,16 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: Project
+metadata:
+  annotations:
+    openchoreo.dev/description: Doclet Demo — anonymous real-time collaboration on rich-text documents
+    openchoreo.dev/display-name: Doclet
+  labels:
+    openchoreo.dev/name: doclet
+  name: doclet
+  namespace: default
+spec:
+  deploymentPipelineRef:
+    name: default
+  type:
+    kind: ClusterProjectType
+    name: default

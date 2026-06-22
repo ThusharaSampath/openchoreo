@@ -13,31 +13,28 @@ import (
 
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/pagination"
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/utils"
+	"github.com/openchoreo/openchoreo/internal/occ/cmdutil"
 	"github.com/openchoreo/openchoreo/internal/occ/resources/client"
-	"github.com/openchoreo/openchoreo/internal/occ/validation"
 	"github.com/openchoreo/openchoreo/internal/openchoreo-api/api/gen"
 )
 
 // DataPlane implements data plane operations
-type DataPlane struct{}
+type DataPlane struct {
+	client client.Interface
+}
 
 // New creates a new data plane implementation
-func New() *DataPlane {
-	return &DataPlane{}
+func New(c client.Interface) *DataPlane {
+	return &DataPlane{client: c}
 }
 
 // List lists all data planes in a namespace
 func (d *DataPlane) List(params ListParams) error {
-	if err := validation.ValidateParams(validation.CmdList, validation.ResourceDataPlane, params); err != nil {
+	if err := cmdutil.RequireFields("list", "dataplane", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.DataPlane, string, error) {
 		p := &gen.ListDataPlanesParams{}
@@ -45,7 +42,7 @@ func (d *DataPlane) List(params ListParams) error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := c.ListDataPlanes(ctx, params.Namespace, p)
+		result, err := d.client.ListDataPlanes(ctx, params.Namespace, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -64,18 +61,13 @@ func (d *DataPlane) List(params ListParams) error {
 
 // Get retrieves a single data plane and outputs it as YAML
 func (d *DataPlane) Get(params GetParams) error {
-	if err := validation.ValidateParams(validation.CmdGet, validation.ResourceDataPlane, params); err != nil {
+	if err := cmdutil.RequireFields("get", "dataplane", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := c.GetDataPlane(ctx, params.Namespace, params.DataPlaneName)
+	result, err := d.client.GetDataPlane(ctx, params.Namespace, params.DataPlaneName)
 	if err != nil {
 		return err
 	}
@@ -91,18 +83,13 @@ func (d *DataPlane) Get(params GetParams) error {
 
 // Delete deletes a single data plane
 func (d *DataPlane) Delete(params DeleteParams) error {
-	if err := validation.ValidateParams(validation.CmdDelete, validation.ResourceDataPlane, params); err != nil {
+	if err := cmdutil.RequireFields("delete", "dataplane", map[string]string{"namespace": params.Namespace, "name": params.DataPlaneName}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := c.DeleteDataPlane(ctx, params.Namespace, params.DataPlaneName); err != nil {
+	if err := d.client.DeleteDataPlane(ctx, params.Namespace, params.DataPlaneName); err != nil {
 		return err
 	}
 

@@ -313,6 +313,20 @@ var _ = Describe("Trait Webhook", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
+		It("should reject template expression in creates kind field", func() {
+			obj.Spec.Creates = []openchoreodevv1alpha1.TraitCreate{
+				{
+					Template: &runtime.RawExtension{
+						Raw: []byte(`{"apiVersion": "v1", "kind": "${parameters.kind}", "metadata": {"name": "test"}}`),
+					},
+				},
+			}
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("kind must be a literal value"))
+		})
+
 		It("should allow creates template with metadata.namespace set to ${metadata.namespace}", func() {
 			obj.Spec.Creates = []openchoreodevv1alpha1.TraitCreate{
 				{
@@ -362,6 +376,101 @@ var _ = Describe("Trait Webhook", func() {
 			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("apiVersion is required"))
+		})
+
+		It("should reject Deployment kind in creates template", func() {
+			obj.Spec.Creates = []openchoreodevv1alpha1.TraitCreate{
+				{
+					Template: &runtime.RawExtension{
+						Raw: []byte(`{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"name": "extra-deploy"}}`),
+					},
+				},
+			}
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("traits must not create workload resources"))
+			Expect(err.Error()).To(ContainSubstring("Deployment"))
+		})
+
+		It("should reject StatefulSet kind in creates template", func() {
+			obj.Spec.Creates = []openchoreodevv1alpha1.TraitCreate{
+				{
+					Template: &runtime.RawExtension{
+						Raw: []byte(`{"apiVersion": "apps/v1", "kind": "StatefulSet", "metadata": {"name": "extra-sts"}}`),
+					},
+				},
+			}
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("traits must not create workload resources"))
+			Expect(err.Error()).To(ContainSubstring("StatefulSet"))
+		})
+
+		It("should reject CronJob kind in creates template", func() {
+			obj.Spec.Creates = []openchoreodevv1alpha1.TraitCreate{
+				{
+					Template: &runtime.RawExtension{
+						Raw: []byte(`{"apiVersion": "batch/v1", "kind": "CronJob", "metadata": {"name": "extra-cron"}}`),
+					},
+				},
+			}
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("traits must not create workload resources"))
+			Expect(err.Error()).To(ContainSubstring("CronJob"))
+		})
+
+		It("should reject Job kind in creates template", func() {
+			obj.Spec.Creates = []openchoreodevv1alpha1.TraitCreate{
+				{
+					Template: &runtime.RawExtension{
+						Raw: []byte(`{"apiVersion": "batch/v1", "kind": "Job", "metadata": {"name": "extra-job"}}`),
+					},
+				},
+			}
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("traits must not create workload resources"))
+			Expect(err.Error()).To(ContainSubstring("Job"))
+		})
+
+		It("should reject workload resource kind case-insensitively", func() {
+			obj.Spec.Creates = []openchoreodevv1alpha1.TraitCreate{
+				{
+					Template: &runtime.RawExtension{
+						Raw: []byte(`{"apiVersion": "apps/v1", "kind": "deployment", "metadata": {"name": "extra"}}`),
+					},
+				},
+			}
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("traits must not create workload resources"))
+		})
+
+		It("should reject workload resource in creates on update", func() {
+			oldObj.Spec.Creates = []openchoreodevv1alpha1.TraitCreate{
+				{
+					Template: &runtime.RawExtension{
+						Raw: []byte(`{"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": "test"}}`),
+					},
+				},
+			}
+			obj.Spec.Creates = []openchoreodevv1alpha1.TraitCreate{
+				{
+					Template: &runtime.RawExtension{
+						Raw: []byte(`{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"name": "extra"}}`),
+					},
+				},
+			}
+
+			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("traits must not create workload resources"))
 		})
 	})
 
@@ -425,6 +534,52 @@ var _ = Describe("Trait Webhook", func() {
 
 			_, err := validator.ValidateCreate(ctx, obj)
 			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should reject a validation rule referencing a parameters field absent from the schema", func() {
+			obj.Spec.Parameters = &openchoreodevv1alpha1.SchemaSection{
+				OpenAPIV3Schema: &runtime.RawExtension{
+					Raw: []byte(`{"type":"object","properties":{"mountPath":{"type":"string"}},"required":["mountPath"]}`),
+				},
+			}
+			obj.Spec.Validations = []openchoreodevv1alpha1.ValidationRule{
+				{Rule: "${parameters.unknownField != ''}", Message: "uses an undeclared field"},
+			}
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred(),
+				"schema-aware type checking should reject CEL referencing a field not in the parameters schema")
+		})
+
+		It("should reject a validation rule referencing environmentConfigs when no environmentConfigs schema is declared", func() {
+			obj.Spec.Parameters = &openchoreodevv1alpha1.SchemaSection{
+				OpenAPIV3Schema: &runtime.RawExtension{
+					Raw: []byte(`{"type":"object","properties":{"mountPath":{"type":"string"}},"required":["mountPath"]}`),
+				},
+			}
+			obj.Spec.Validations = []openchoreodevv1alpha1.ValidationRule{
+				{Rule: "${environmentConfigs.size != ''}", Message: "envConfigs ref without a schema"},
+			}
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred(),
+				"CEL referencing environmentConfigs should be rejected when no environmentConfigs schema is declared")
+		})
+
+		It("should reject the entire validation slice when any single rule is malformed", func() {
+			obj.Spec.Parameters = &openchoreodevv1alpha1.SchemaSection{
+				OpenAPIV3Schema: &runtime.RawExtension{
+					Raw: []byte(`{"type":"object","properties":{"mountPath":{"type":"string"}},"required":["mountPath"]}`),
+				},
+			}
+			obj.Spec.Validations = []openchoreodevv1alpha1.ValidationRule{
+				{Rule: "${parameters.mountPath != ''}", Message: "valid rule"},
+				{Rule: "${parameters.mountPath +}", Message: "malformed second rule"},
+			}
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred(),
+				"a malformed rule anywhere in spec.validations should reject the whole object")
 		})
 	})
 
@@ -494,6 +649,49 @@ var _ = Describe("Trait Webhook", func() {
 
 			_, err := validator.ValidateCreate(ctx, obj)
 			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("Error path tests", func() {
+		It("should return error when ValidateCreate receives wrong type", func() {
+			wrongObj := &openchoreodevv1alpha1.Component{}
+			_, err := validator.ValidateCreate(ctx, wrongObj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("expected a Trait object but got"))
+		})
+
+		It("should return error when ValidateUpdate receives wrong newObj type", func() {
+			wrongObj := &openchoreodevv1alpha1.Component{}
+			_, err := validator.ValidateUpdate(ctx, obj, wrongObj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("expected a Trait object for the newObj but got"))
+		})
+	})
+
+	Context("ValidateDelete", func() {
+		It("should admit deletion of a valid Trait", func() {
+			_, err := validator.ValidateDelete(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should return error when ValidateDelete receives wrong type", func() {
+			wrongObj := &openchoreodevv1alpha1.Component{}
+			_, err := validator.ValidateDelete(ctx, wrongObj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("expected a Trait object but got"))
+		})
+	})
+
+	Context("Nil template in creates", func() {
+		It("should reject nil template in creates", func() {
+			obj.Spec.Creates = []openchoreodevv1alpha1.TraitCreate{
+				{
+					Template: nil,
+				},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("template is required"))
 		})
 	})
 })

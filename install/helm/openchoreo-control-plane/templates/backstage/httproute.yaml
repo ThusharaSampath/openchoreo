@@ -26,9 +26,22 @@ spec:
         - path:
             type: PathPrefix
             value: /api/openchoreo-observability-backend/chat
+        - path:
+            type: PathPrefix
+            value: /api/openchoreo-portal-assistant-backend/api/v1alpha1/portal-assistant/chat
       timeouts:
         request: "450s"
         backendRequest: "450s"
+      backendRefs:
+        - name: {{ include "openchoreo-control-plane.backstage.name" $ }}
+          port: {{ .Values.backstage.service.port }}
+    - name: wirelogs
+      matches:
+        - path:
+            type: PathPrefix
+            value: /api/openchoreo/wirelogs/stream
+      timeouts:
+        backendRequest: "0s"
       backendRefs:
         - name: {{ include "openchoreo-control-plane.backstage.name" $ }}
           port: {{ .Values.backstage.service.port }}

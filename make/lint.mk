@@ -11,6 +11,7 @@ ALL_GO_FILES := $(shell \
 		! -path './internal/observer/api/gen/*' \
 		! -path './internal/observer/api/logsadapterclientgen/*' \
 		! -path './samples/*' \
+		! -path '**/mocks/*' \
 	| sort)
 
 # Path to your tool (update if different)
@@ -80,6 +81,7 @@ lint-fix: golangci-lint-fix license-fix newline-fix ## Run golangci-lint linter,
 # Individual getting-started sample files that compose all.yaml (order matters)
 GETTING_STARTED_DIR := samples/getting-started
 GETTING_STARTED_FILES := \
+	$(GETTING_STARTED_DIR)/cluster-project-types/default.yaml \
 	$(GETTING_STARTED_DIR)/project.yaml \
 	$(GETTING_STARTED_DIR)/deployment-pipeline.yaml \
 	$(GETTING_STARTED_DIR)/environments.yaml \
@@ -87,6 +89,9 @@ GETTING_STARTED_FILES := \
 	$(GETTING_STARTED_DIR)/component-types/service.yaml \
 	$(GETTING_STARTED_DIR)/component-types/webapp.yaml \
 	$(GETTING_STARTED_DIR)/component-types/scheduled-task.yaml \
+	$(GETTING_STARTED_DIR)/cluster-resource-types/postgres.yaml \
+	$(GETTING_STARTED_DIR)/cluster-resource-types/valkey.yaml \
+	$(GETTING_STARTED_DIR)/cluster-resource-types/nats.yaml \
 	$(GETTING_STARTED_DIR)/ci-workflows/paketo-buildpacks-builder.yaml \
 	$(GETTING_STARTED_DIR)/ci-workflows/gcp-buildpacks-builder.yaml \
 	$(GETTING_STARTED_DIR)/ci-workflows/ballerina-buildpack-builder.yaml \
@@ -106,9 +111,6 @@ samples-gen: ## Generate samples/getting-started/all.yaml from individual files
 	printf '# environments, pipeline, component types, workflows, and traits.\n'; \
 	printf '#\n'; \
 	printf '# Usage:\n'; \
-	printf '#   kubectl apply -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/getting-started/all.yaml\n'; \
-	printf '#\n'; \
-	printf '# Or if you have cloned the repository:\n'; \
 	printf '#   kubectl apply -f samples/getting-started/all.yaml\n'; \
 	for f in $(GETTING_STARTED_FILES); do \
 		printf '\n---\n'; \
@@ -154,7 +156,7 @@ workflow-templates-gen: ## Generate samples/getting-started/workflow-templates.y
 	@echo "✓ Generated $(GETTING_STARTED_DIR)/workflow-templates.yaml"
 
 .PHONY: code.gen
-code.gen: manifests generate openapi-codegen go.mod.lint helm-generate samples-gen workflow-templates-gen ## Generate code and fix the code with linter
+code.gen: manifests generate openapi-codegen go.mod.lint helm-generate samples-gen workflow-templates-gen mockery-gen ## Generate code and fix the code with linter
 
 .PHONY: code.gen-check
 code.gen-check: code.gen ## Verify the clean Git status after code generation

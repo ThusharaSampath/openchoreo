@@ -25,7 +25,7 @@ type RenderedReleaseSpec struct {
 	// Supports any Kubernetes resource type including HPA, PDB, NetworkPolicy, CRDs, etc. that can
 	// be applied to the data plane.
 	// +kubebuilder:validation:Optional
-	Resources []Resource `json:"resources,omitempty"`
+	Resources []RenderedManifest `json:"resources,omitempty"`
 
 	// Interval watch interval for the release resources when stable.
 	// Defaults to 5m if not specified.
@@ -52,7 +52,7 @@ type RenderedReleaseSpec struct {
 type RenderedReleaseStatus struct {
 	// Resources contain the list of resources that have been successfully applied to the data plane
 	// +optional
-	Resources []ResourceStatus `json:"resources,omitempty"`
+	Resources []RenderedManifestStatus `json:"resources,omitempty"`
 
 	// Conditions represent the latest available observations of the RenderedRelease's current state.
 	// +optional
@@ -80,16 +80,31 @@ type RenderedReleaseList struct {
 	Items           []RenderedRelease `json:"items"`
 }
 
-// RenderedReleaseOwner defines the owner of a RenderedRelease.
+// RenderedReleaseOwner identifies the owner of a RenderedRelease. ProjectName
+// is always required. The optional name fields disambiguate the binding kind:
+//   - ComponentName set: produced by a ReleaseBinding (component)
+//   - ResourceName set:  produced by a ResourceReleaseBinding
+//   - Both unset:        produced by a ProjectReleaseBinding (project-level
+//     infra including the cell namespace)
+//
+// At most one of ComponentName or ResourceName may be set.
+// +kubebuilder:validation:XValidation:rule="!(has(self.componentName) && has(self.resourceName))",message="componentName and resourceName both cannot be set"
 type RenderedReleaseOwner struct {
+	// ProjectName is the name of the Project the owner belongs to.
 	// +kubebuilder:validation:MinLength=1
 	ProjectName string `json:"projectName"`
-	// +kubebuilder:validation:MinLength=1
-	ComponentName string `json:"componentName"`
+	// ComponentName is set when the RenderedRelease is owned by a Component
+	// (via ReleaseBinding). Mutually exclusive with ResourceName.
+	// +optional
+	ComponentName string `json:"componentName,omitempty"`
+	// ResourceName is set when the RenderedRelease is owned by a Resource
+	// (via ResourceReleaseBinding). Mutually exclusive with ComponentName.
+	// +optional
+	ResourceName string `json:"resourceName,omitempty"`
 }
 
-// Resource defines a Kubernetes resource template that can be applied to the data plane.
-type Resource struct {
+// RenderedManifest defines a Kubernetes resource template that can be applied to the data plane.
+type RenderedManifest struct {
 	// Unique identifier for the resource
 	// +kubebuilder:validation:MinLength=1
 	ID string `json:"id"`
@@ -100,8 +115,8 @@ type Resource struct {
 	Object *runtime.RawExtension `json:"object"`
 }
 
-// ResourceStatus tracks a resource that was applied to the data plane.
-type ResourceStatus struct {
+// RenderedManifestStatus tracks a resource that was applied to the data plane.
+type RenderedManifestStatus struct {
 	// ID corresponds to the resource ID in spec.resources
 	// +kubebuilder:validation:MinLength=1
 	ID string `json:"id"`

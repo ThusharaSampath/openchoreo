@@ -18,21 +18,18 @@ import (
 )
 
 // Namespace implements namespace operations
-type Namespace struct{}
+type Namespace struct {
+	client client.Interface
+}
 
 // New creates a new namespace implementation
-func New() *Namespace {
-	return &Namespace{}
+func New(c client.Interface) *Namespace {
+	return &Namespace{client: c}
 }
 
 // List lists all namespaces
 func (n *Namespace) List() error {
 	ctx := context.Background()
-
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.Namespace, string, error) {
 		p := &gen.ListNamespacesParams{}
@@ -40,7 +37,7 @@ func (n *Namespace) List() error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := c.ListNamespaces(ctx, p)
+		result, err := n.client.ListNamespaces(ctx, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -61,12 +58,7 @@ func (n *Namespace) List() error {
 func (n *Namespace) Get(name string) error {
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := c.GetNamespace(ctx, name)
+	result, err := n.client.GetNamespace(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -84,12 +76,7 @@ func (n *Namespace) Get(name string) error {
 func (n *Namespace) Delete(name string) error {
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := c.DeleteNamespace(ctx, name); err != nil {
+	if err := n.client.DeleteNamespace(ctx, name); err != nil {
 		return err
 	}
 

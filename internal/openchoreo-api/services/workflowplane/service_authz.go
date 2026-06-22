@@ -15,11 +15,6 @@ import (
 )
 
 const (
-	actionViewWorkflowPlane   = "workflowplane:view"
-	actionCreateWorkflowPlane = "workflowplane:create"
-	actionUpdateWorkflowPlane = "workflowplane:update"
-	actionDeleteWorkflowPlane = "workflowplane:delete"
-
 	resourceTypeWorkflowPlane = "workflowplane"
 )
 
@@ -35,7 +30,7 @@ var _ Service = (*workflowPlaneServiceWithAuthz)(nil)
 // NewServiceWithAuthz creates a workflow plane service with authorization checks.
 func NewServiceWithAuthz(k8sClient client.Client, authzPDP authz.PDP, logger *slog.Logger) Service {
 	return &workflowPlaneServiceWithAuthz{
-		internal: NewService(k8sClient, nil, logger),
+		internal: NewService(k8sClient, nil, logger), // nil provider is OK — authz wrapper stubs GetWorkflowPlaneClient/ArgoWorkflowExists
 		authz:    services.NewAuthzChecker(authzPDP, logger),
 	}
 }
@@ -47,7 +42,7 @@ func (s *workflowPlaneServiceWithAuthz) ListWorkflowPlanes(ctx context.Context, 
 		},
 		func(wp openchoreov1alpha1.WorkflowPlane) services.CheckRequest {
 			return services.CheckRequest{
-				Action:       actionViewWorkflowPlane,
+				Action:       authz.ActionViewWorkflowPlane,
 				ResourceType: resourceTypeWorkflowPlane,
 				ResourceID:   wp.Name,
 				Hierarchy:    authz.ResourceHierarchy{Namespace: namespaceName},
@@ -58,7 +53,7 @@ func (s *workflowPlaneServiceWithAuthz) ListWorkflowPlanes(ctx context.Context, 
 
 func (s *workflowPlaneServiceWithAuthz) GetWorkflowPlane(ctx context.Context, namespaceName, workflowPlaneName string) (*openchoreov1alpha1.WorkflowPlane, error) {
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionViewWorkflowPlane,
+		Action:       authz.ActionViewWorkflowPlane,
 		ResourceType: resourceTypeWorkflowPlane,
 		ResourceID:   workflowPlaneName,
 		Hierarchy:    authz.ResourceHierarchy{Namespace: namespaceName},
@@ -74,7 +69,7 @@ func (s *workflowPlaneServiceWithAuthz) CreateWorkflowPlane(ctx context.Context,
 		return nil, ErrWorkflowPlaneNil
 	}
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionCreateWorkflowPlane,
+		Action:       authz.ActionCreateWorkflowPlane,
 		ResourceType: resourceTypeWorkflowPlane,
 		ResourceID:   wp.Name,
 		Hierarchy:    authz.ResourceHierarchy{Namespace: namespaceName},
@@ -90,7 +85,7 @@ func (s *workflowPlaneServiceWithAuthz) UpdateWorkflowPlane(ctx context.Context,
 		return nil, ErrWorkflowPlaneNil
 	}
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionUpdateWorkflowPlane,
+		Action:       authz.ActionUpdateWorkflowPlane,
 		ResourceType: resourceTypeWorkflowPlane,
 		ResourceID:   wp.Name,
 		Hierarchy:    authz.ResourceHierarchy{Namespace: namespaceName},
@@ -103,7 +98,7 @@ func (s *workflowPlaneServiceWithAuthz) UpdateWorkflowPlane(ctx context.Context,
 // DeleteWorkflowPlane checks delete authorization before delegating to the internal service.
 func (s *workflowPlaneServiceWithAuthz) DeleteWorkflowPlane(ctx context.Context, namespaceName, workflowPlaneName string) error {
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionDeleteWorkflowPlane,
+		Action:       authz.ActionDeleteWorkflowPlane,
 		ResourceType: resourceTypeWorkflowPlane,
 		ResourceID:   workflowPlaneName,
 		Hierarchy:    authz.ResourceHierarchy{Namespace: namespaceName},
@@ -114,12 +109,11 @@ func (s *workflowPlaneServiceWithAuthz) DeleteWorkflowPlane(ctx context.Context,
 }
 
 // GetWorkflowPlaneClient is not implemented on the authz-wrapped service as it is not exposed externally.
-func (s *workflowPlaneServiceWithAuthz) GetWorkflowPlaneClient(_ context.Context, _, _ string) (client.Client, error) {
+func (s *workflowPlaneServiceWithAuthz) GetWorkflowPlaneClient(_ context.Context, _ string) (client.Client, error) {
 	return nil, errNotImplemented
 }
 
 // ArgoWorkflowExists is not implemented on the authz-wrapped service as it is not exposed externally.
-// not implemented on the authz-wrapped service as it is not exposed externally
-func (s *workflowPlaneServiceWithAuthz) ArgoWorkflowExists(_ context.Context, _, _ string, _ *openchoreov1alpha1.ResourceReference) bool {
+func (s *workflowPlaneServiceWithAuthz) ArgoWorkflowExists(_ context.Context, _ string, _ *openchoreov1alpha1.ResourceReference) bool {
 	return false
 }

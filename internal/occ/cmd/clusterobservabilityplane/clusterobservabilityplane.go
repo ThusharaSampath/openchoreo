@@ -18,21 +18,18 @@ import (
 )
 
 // ClusterObservabilityPlane implements cluster observability plane operations
-type ClusterObservabilityPlane struct{}
+type ClusterObservabilityPlane struct {
+	client client.Interface
+}
 
 // New creates a new cluster observability plane implementation
-func New() *ClusterObservabilityPlane {
-	return &ClusterObservabilityPlane{}
+func New(c client.Interface) *ClusterObservabilityPlane {
+	return &ClusterObservabilityPlane{client: c}
 }
 
 // List lists all cluster-scoped observability planes
 func (c *ClusterObservabilityPlane) List() error {
 	ctx := context.Background()
-
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.ClusterObservabilityPlane, string, error) {
 		p := &gen.ListClusterObservabilityPlanesParams{}
@@ -40,7 +37,7 @@ func (c *ClusterObservabilityPlane) List() error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := cl.ListClusterObservabilityPlanes(ctx, p)
+		result, err := c.client.ListClusterObservabilityPlanes(ctx, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -60,12 +57,7 @@ func (c *ClusterObservabilityPlane) List() error {
 func (c *ClusterObservabilityPlane) Get(params GetParams) error {
 	ctx := context.Background()
 
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := cl.GetClusterObservabilityPlane(ctx, params.ClusterObservabilityPlaneName)
+	result, err := c.client.GetClusterObservabilityPlane(ctx, params.ClusterObservabilityPlaneName)
 	if err != nil {
 		return err
 	}
@@ -83,12 +75,7 @@ func (c *ClusterObservabilityPlane) Get(params GetParams) error {
 func (c *ClusterObservabilityPlane) Delete(params DeleteParams) error {
 	ctx := context.Background()
 
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := cl.DeleteClusterObservabilityPlane(ctx, params.ClusterObservabilityPlaneName); err != nil {
+	if err := c.client.DeleteClusterObservabilityPlane(ctx, params.ClusterObservabilityPlaneName); err != nil {
 		return err
 	}
 

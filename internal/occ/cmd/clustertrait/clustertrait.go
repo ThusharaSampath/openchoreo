@@ -18,21 +18,18 @@ import (
 )
 
 // ClusterTrait implements cluster trait operations
-type ClusterTrait struct{}
+type ClusterTrait struct {
+	client client.Interface
+}
 
 // New creates a new cluster trait implementation
-func New() *ClusterTrait {
-	return &ClusterTrait{}
+func New(c client.Interface) *ClusterTrait {
+	return &ClusterTrait{client: c}
 }
 
 // List lists all cluster-scoped traits
 func (c *ClusterTrait) List() error {
 	ctx := context.Background()
-
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.ClusterTrait, string, error) {
 		p := &gen.ListClusterTraitsParams{}
@@ -40,7 +37,7 @@ func (c *ClusterTrait) List() error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := cl.ListClusterTraits(ctx, p)
+		result, err := c.client.ListClusterTraits(ctx, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -60,12 +57,7 @@ func (c *ClusterTrait) List() error {
 func (c *ClusterTrait) Get(params GetParams) error {
 	ctx := context.Background()
 
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := cl.GetClusterTrait(ctx, params.ClusterTraitName)
+	result, err := c.client.GetClusterTrait(ctx, params.ClusterTraitName)
 	if err != nil {
 		return err
 	}
@@ -83,12 +75,7 @@ func (c *ClusterTrait) Get(params GetParams) error {
 func (c *ClusterTrait) Delete(params DeleteParams) error {
 	ctx := context.Background()
 
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := cl.DeleteClusterTrait(ctx, params.ClusterTraitName); err != nil {
+	if err := c.client.DeleteClusterTrait(ctx, params.ClusterTraitName); err != nil {
 		return err
 	}
 

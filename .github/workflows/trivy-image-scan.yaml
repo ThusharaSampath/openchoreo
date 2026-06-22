@@ -1,0 +1,49 @@
+name: Trivy Image Scan
+
+on:
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  scan:
+    name: Scan (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - controller
+          - openchoreo-api
+          - observer
+          - event-forwarder
+          - cluster-gateway
+          - cluster-agent
+          - sre-agent
+          - finops-agent
+          - portal-assistant
+    steps:
+      - name: Set image tag
+        id: tag
+        run: echo "sha=$(echo '${{ github.sha }}' | cut -c1-8)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify image exists
+        run: |
+          docker manifest inspect ghcr.io/openchoreo/${{ matrix.image }}:${{ steps.tag.outputs.sha }} > /dev/null 2>&1 || \
+            (echo "::error::Image ghcr.io/openchoreo/${{ matrix.image }}:${{ steps.tag.outputs.sha }} not found. Ensure the build workflow has completed." && exit 1)
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ghcr.io/openchoreo/${{ matrix.image }}:${{ steps.tag.outputs.sha }}
+          format: sarif
+          output: ${{ matrix.image }}.sarif
+
+      - name: Upload results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        with:
+          sarif_file: ${{ matrix.image }}.sarif
+          category: ${{ matrix.image }}

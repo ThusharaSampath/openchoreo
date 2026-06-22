@@ -13,30 +13,28 @@ import (
 
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/pagination"
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/utils"
+	"github.com/openchoreo/openchoreo/internal/occ/cmdutil"
 	"github.com/openchoreo/openchoreo/internal/occ/resources/client"
-	"github.com/openchoreo/openchoreo/internal/occ/validation"
 	"github.com/openchoreo/openchoreo/internal/openchoreo-api/api/gen"
 )
 
 // DeploymentPipeline implements deployment pipeline operations
-type DeploymentPipeline struct{}
+type DeploymentPipeline struct {
+	client client.Interface
+}
 
 // New creates a new deployment pipeline implementation
-func New() *DeploymentPipeline {
-	return &DeploymentPipeline{}
+func New(c client.Interface) *DeploymentPipeline {
+	return &DeploymentPipeline{client: c}
 }
 
 // List lists all deployment pipelines in a namespace
 func (d *DeploymentPipeline) List(params ListParams) error {
-	if err := validation.ValidateParams(validation.CmdList, validation.ResourceDeploymentPipeline, params); err != nil {
+	if err := cmdutil.RequireFields("list", "deploymentpipeline", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.DeploymentPipeline, string, error) {
 		p := &gen.ListDeploymentPipelinesParams{}
@@ -44,7 +42,7 @@ func (d *DeploymentPipeline) List(params ListParams) error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := c.ListDeploymentPipelines(ctx, params.Namespace, p)
+		result, err := d.client.ListDeploymentPipelines(ctx, params.Namespace, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -62,17 +60,13 @@ func (d *DeploymentPipeline) List(params ListParams) error {
 
 // Get retrieves a single deployment pipeline and outputs it as YAML
 func (d *DeploymentPipeline) Get(params GetParams) error {
-	if err := validation.ValidateParams(validation.CmdGet, validation.ResourceDeploymentPipeline, params); err != nil {
+	if err := cmdutil.RequireFields("get", "deploymentpipeline", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
-	result, err := c.GetDeploymentPipeline(ctx, params.Namespace, params.DeploymentPipelineName)
+	result, err := d.client.GetDeploymentPipeline(ctx, params.Namespace, params.DeploymentPipelineName)
 	if err != nil {
 		return err
 	}
@@ -88,17 +82,13 @@ func (d *DeploymentPipeline) Get(params GetParams) error {
 
 // Delete deletes a single deployment pipeline
 func (d *DeploymentPipeline) Delete(params DeleteParams) error {
-	if err := validation.ValidateParams(validation.CmdDelete, validation.ResourceDeploymentPipeline, params); err != nil {
+	if err := cmdutil.RequireFields("delete", "deploymentpipeline", map[string]string{"namespace": params.Namespace, "name": params.DeploymentPipelineName}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
-	if err := c.DeleteDeploymentPipeline(ctx, params.Namespace, params.DeploymentPipelineName); err != nil {
+	if err := d.client.DeleteDeploymentPipeline(ctx, params.Namespace, params.DeploymentPipelineName); err != nil {
 		return err
 	}
 

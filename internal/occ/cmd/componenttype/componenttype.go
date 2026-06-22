@@ -13,31 +13,28 @@ import (
 
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/pagination"
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/utils"
+	"github.com/openchoreo/openchoreo/internal/occ/cmdutil"
 	"github.com/openchoreo/openchoreo/internal/occ/resources/client"
-	"github.com/openchoreo/openchoreo/internal/occ/validation"
 	"github.com/openchoreo/openchoreo/internal/openchoreo-api/api/gen"
 )
 
 // ComponentType implements component type operations
-type ComponentType struct{}
+type ComponentType struct {
+	client client.Interface
+}
 
 // New creates a new component type implementation
-func New() *ComponentType {
-	return &ComponentType{}
+func New(c client.Interface) *ComponentType {
+	return &ComponentType{client: c}
 }
 
 // List lists all component types in a namespace
 func (ct *ComponentType) List(params ListParams) error {
-	if err := validation.ValidateParams(validation.CmdList, validation.ResourceComponentType, params); err != nil {
+	if err := cmdutil.RequireFields("list", "componenttype", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.ComponentType, string, error) {
 		p := &gen.ListComponentTypesParams{}
@@ -45,7 +42,7 @@ func (ct *ComponentType) List(params ListParams) error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := c.ListComponentTypes(ctx, params.Namespace, p)
+		result, err := ct.client.ListComponentTypes(ctx, params.Namespace, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -63,18 +60,13 @@ func (ct *ComponentType) List(params ListParams) error {
 
 // Get retrieves a single component type and outputs it as YAML
 func (ct *ComponentType) Get(params GetParams) error {
-	if err := validation.ValidateParams(validation.CmdGet, validation.ResourceComponentType, params); err != nil {
+	if err := cmdutil.RequireFields("get", "componenttype", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := c.GetComponentType(ctx, params.Namespace, params.ComponentTypeName)
+	result, err := ct.client.GetComponentType(ctx, params.Namespace, params.ComponentTypeName)
 	if err != nil {
 		return err
 	}
@@ -90,18 +82,13 @@ func (ct *ComponentType) Get(params GetParams) error {
 
 // Delete deletes a single component type
 func (ct *ComponentType) Delete(params DeleteParams) error {
-	if err := validation.ValidateParams(validation.CmdDelete, validation.ResourceComponentType, params); err != nil {
+	if err := cmdutil.RequireFields("delete", "componenttype", map[string]string{"namespace": params.Namespace, "name": params.ComponentTypeName}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := c.DeleteComponentType(ctx, params.Namespace, params.ComponentTypeName); err != nil {
+	if err := ct.client.DeleteComponentType(ctx, params.Namespace, params.ComponentTypeName); err != nil {
 		return err
 	}
 

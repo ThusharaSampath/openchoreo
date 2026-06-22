@@ -5,8 +5,11 @@ package mcphandlers
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	openchoreov1alpha1 "github.com/openchoreo/openchoreo/api/v1alpha1"
 	"github.com/openchoreo/openchoreo/internal/controller"
@@ -51,6 +54,23 @@ func (h *MCPHandler) CreateProject(ctx context.Context, namespaceName string, re
 		},
 	}
 
+	if req.Spec != nil && req.Spec.Type != nil {
+		project.Spec.Type = openchoreov1alpha1.ProjectTypeRef{
+			Name: req.Spec.Type.Name,
+		}
+		if req.Spec.Type.Kind != nil {
+			project.Spec.Type.Kind = openchoreov1alpha1.ProjectTypeRefKind(*req.Spec.Type.Kind)
+		}
+	}
+
+	if req.Spec != nil && req.Spec.Parameters != nil {
+		paramsBytes, err := json.Marshal(*req.Spec.Parameters)
+		if err != nil {
+			return nil, fmt.Errorf("marshal parameters: %w", err)
+		}
+		project.Spec.Parameters = &runtime.RawExtension{Raw: paramsBytes}
+	}
+
 	if displayName, ok := project.Annotations[controller.AnnotationKeyDisplayName]; ok && displayName == "" {
 		delete(project.Annotations, controller.AnnotationKeyDisplayName)
 	}
@@ -63,4 +83,60 @@ func (h *MCPHandler) CreateProject(ctx context.Context, namespaceName string, re
 		return nil, err
 	}
 	return mutationResult(created, "created"), nil
+}
+
+func (h *MCPHandler) UpdateProject(
+	ctx context.Context,
+	namespaceName, projectName string, req *gen.PatchProjectRequest,
+) (any, error) {
+	if req == nil {
+		req = &gen.PatchProjectRequest{}
+	}
+
+	project, err := h.services.ProjectService.GetProject(ctx, namespaceName, projectName)
+	if err != nil {
+		return nil, fmt.Errorf("UpdateProject: GetProject namespace=%s project=%s: %w", namespaceName, projectName, err)
+	}
+
+	updatedProject := project.DeepCopy()
+	if updatedProject.Annotations == nil {
+		updatedProject.Annotations = map[string]string{}
+	}
+	if req.DisplayName != nil && *req.DisplayName != "" {
+		updatedProject.Annotations[controller.AnnotationKeyDisplayName] = *req.DisplayName
+	}
+	if req.Description != nil && *req.Description != "" {
+		updatedProject.Annotations[controller.AnnotationKeyDescription] = *req.Description
+	}
+
+	deploymentPipeline := ""
+	if req.DeploymentPipeline != nil && *req.DeploymentPipeline != "" {
+		deploymentPipeline = *req.DeploymentPipeline
+		updatedProject.Spec.DeploymentPipelineRef = openchoreov1alpha1.DeploymentPipelineRef{
+			Kind: openchoreov1alpha1.DeploymentPipelineRefKindDeploymentPipeline,
+			Name: deploymentPipeline,
+		}
+	}
+
+	updated, err := h.services.ProjectService.UpdateProject(ctx, namespaceName, updatedProject)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"UpdateProject: UpdateProject namespace=%s project=%s deploymentPipeline=%s: %w",
+			namespaceName, projectName, deploymentPipeline, err,
+		)
+	}
+	return mutationResult(updated, "updated", map[string]any{
+		"deploymentPipelineRef": updated.Spec.DeploymentPipelineRef.Name,
+	}), nil
+}
+
+func (h *MCPHandler) DeleteProject(ctx context.Context, namespaceName, projectName string) (any, error) {
+	if err := h.services.ProjectService.DeleteProject(ctx, namespaceName, projectName); err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"name":      projectName,
+		"namespace": namespaceName,
+		"action":    "deleted",
+	}, nil
 }

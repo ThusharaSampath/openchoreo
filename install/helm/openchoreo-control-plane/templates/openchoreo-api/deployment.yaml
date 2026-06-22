@@ -11,7 +11,9 @@ metadata:
     # Trigger rollout when config changes
     checksum/config: {{ include (print $.Template.BasePath "/openchoreo-api/configmap.yaml") . | sha256sum }}
 spec:
+  {{- if not .Values.openchoreoApi.autoscaling.enabled }}
   replicas: {{ .Values.openchoreoApi.replicas }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/component: api-server
@@ -65,6 +67,11 @@ spec:
         - name: config
           mountPath: /etc/openchoreo
           readOnly: true
+        {{- if .Values.clusterGateway.tls.enabled }}
+        - name: cluster-gateway-ca
+          mountPath: /etc/cluster-gateway
+          readOnly: true
+        {{- end }}
         livenessProbe:
           httpGet:
             path: /health
@@ -89,4 +96,9 @@ spec:
       - name: config
         configMap:
           name: {{ include "openchoreo-control-plane.openchoreoApi.name" . }}-config
+      {{- if .Values.clusterGateway.tls.enabled }}
+      - name: cluster-gateway-ca
+        secret:
+          secretName: {{ .Values.openchoreoApi.clusterGateway.tls.caSecret }}
+      {{- end }}
 {{- end }}

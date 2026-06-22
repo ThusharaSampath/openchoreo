@@ -16,6 +16,7 @@ GO_BUILD_BINARIES := \
 	occ:$(PROJECT_DIR)/cmd/occ/main.go \
 	openchoreo-api:$(PROJECT_DIR)/cmd/openchoreo-api/main.go \
 	observer:$(PROJECT_DIR)/cmd/observer/main.go \
+	event-forwarder:$(PROJECT_DIR)/cmd/event-forwarder/main.go \
 	cluster-gateway:$(PROJECT_DIR)/cmd/cluster-gateway \
 	cluster-agent:$(PROJECT_DIR)/cmd/cluster-agent \
 	kube-events-collector:$(PROJECT_DIR)/cmd/kube-events-collector
@@ -164,7 +165,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION := 1.32.0
+ENVTEST_K8S_VERSION := 1.36.0
 
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
@@ -197,4 +198,9 @@ openapi-codegen: oapi-codegen ## Generate Go server and client code from OpenAPI
 	@$(call log, "Generating Observer OpenAPI client")
 	$(OAPI_CODEGEN) -config internal/observer/api/cfg-client.yaml openapi/observer-api.yaml
 	@$(call log, "Generating Observer Logs Adapter API client")
-	$(OAPI_CODEGEN) -config internal/observer/api/cfg-logs-adapter-client.yaml https://openchoreo.dev/api-specs/observability-logs-adapter-api.yaml
+	$(OAPI_CODEGEN) -config internal/observer/api/cfg-logs-adapter-client.yaml openapi/observability-logs-adapter-api.yaml
+
+.PHONY: mockery-gen
+mockery-gen: mockery ## Regenerate mockery mocks.
+	@$(call log, "Generating openchoreo-api service mocks")
+	$(MOCKERY) --config .mockery.yaml

@@ -6,6 +6,7 @@ package component
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	extv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -16,12 +17,6 @@ import (
 )
 
 const (
-	actionCreateComponent          = "component:create"
-	actionUpdateComponent          = "component:update"
-	actionViewComponent            = "component:view"
-	actionDeleteComponent          = "component:delete"
-	actionGenerateReleaseComponent = "componentrelease:create"
-
 	resourceTypeComponent        = "component"
 	resourceTypeComponentRelease = "componentrelease"
 )
@@ -43,15 +38,33 @@ func NewServiceWithAuthz(k8sClient client.Client, authzPDP authz.PDP, logger *sl
 	}
 }
 
+// formatComponentTypeAttr returns the authz-engine identifier for the ComponentType
+// (or ClusterComponentType) referenced by a Component, suitable for the
+// resource.componentType ABAC attribute. ref.Name is "{workloadType}/{componentTypeName}";
+// only the componentTypeName segment identifies the (Cluster)ComponentType resource.
+func formatComponentTypeAttr(namespace string, ref openchoreov1alpha1.ComponentTypeRef) string {
+	_, name, ok := strings.Cut(ref.Name, "/")
+	if !ok {
+		name = ref.Name
+	}
+	isClusterScoped := ref.Kind == openchoreov1alpha1.ComponentTypeRefKindClusterComponentType
+	return services.FormatDualScopedResourceName(namespace, name, isClusterScoped)
+}
+
 func (s *componentServiceWithAuthz) CreateComponent(ctx context.Context, namespaceName string, component *openchoreov1alpha1.Component) (*openchoreov1alpha1.Component, error) {
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionCreateComponent,
+		Action:       authz.ActionCreateComponent,
 		ResourceType: resourceTypeComponent,
 		ResourceID:   component.Name,
 		Hierarchy: authz.ResourceHierarchy{
 			Namespace: namespaceName,
 			Project:   component.Spec.Owner.ProjectName,
 			Component: component.Name,
+		},
+		Context: authz.Context{
+			Resource: authz.ResourceAttribute{
+				ComponentType: formatComponentTypeAttr(namespaceName, component.Spec.ComponentType),
+			},
 		},
 	}); err != nil {
 		return nil, err
@@ -61,13 +74,18 @@ func (s *componentServiceWithAuthz) CreateComponent(ctx context.Context, namespa
 
 func (s *componentServiceWithAuthz) UpdateComponent(ctx context.Context, namespaceName string, component *openchoreov1alpha1.Component) (*openchoreov1alpha1.Component, error) {
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionUpdateComponent,
+		Action:       authz.ActionUpdateComponent,
 		ResourceType: resourceTypeComponent,
 		ResourceID:   component.Name,
 		Hierarchy: authz.ResourceHierarchy{
 			Namespace: namespaceName,
 			Project:   component.Spec.Owner.ProjectName,
 			Component: component.Name,
+		},
+		Context: authz.Context{
+			Resource: authz.ResourceAttribute{
+				ComponentType: formatComponentTypeAttr(namespaceName, component.Spec.ComponentType),
+			},
 		},
 	}); err != nil {
 		return nil, err
@@ -82,7 +100,7 @@ func (s *componentServiceWithAuthz) ListComponents(ctx context.Context, namespac
 		},
 		func(c openchoreov1alpha1.Component) services.CheckRequest {
 			return services.CheckRequest{
-				Action:       actionViewComponent,
+				Action:       authz.ActionViewComponent,
 				ResourceType: resourceTypeComponent,
 				ResourceID:   c.Name,
 				Hierarchy: authz.ResourceHierarchy{
@@ -102,7 +120,7 @@ func (s *componentServiceWithAuthz) GetComponent(ctx context.Context, namespaceN
 		return nil, err
 	}
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionViewComponent,
+		Action:       authz.ActionViewComponent,
 		ResourceType: resourceTypeComponent,
 		ResourceID:   componentName,
 		Hierarchy: authz.ResourceHierarchy{
@@ -123,13 +141,18 @@ func (s *componentServiceWithAuthz) DeleteComponent(ctx context.Context, namespa
 		return err
 	}
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionDeleteComponent,
+		Action:       authz.ActionDeleteComponent,
 		ResourceType: resourceTypeComponent,
 		ResourceID:   componentName,
 		Hierarchy: authz.ResourceHierarchy{
 			Namespace: namespaceName,
 			Project:   comp.Spec.Owner.ProjectName,
 			Component: componentName,
+		},
+		Context: authz.Context{
+			Resource: authz.ResourceAttribute{
+				ComponentType: formatComponentTypeAttr(namespaceName, comp.Spec.ComponentType),
+			},
 		},
 	}); err != nil {
 		return err
@@ -144,7 +167,7 @@ func (s *componentServiceWithAuthz) GenerateRelease(ctx context.Context, namespa
 		return nil, err
 	}
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionGenerateReleaseComponent,
+		Action:       authz.ActionCreateComponentRelease,
 		ResourceType: resourceTypeComponentRelease,
 		ResourceID:   componentName,
 		Hierarchy: authz.ResourceHierarchy{
@@ -165,7 +188,7 @@ func (s *componentServiceWithAuthz) GetComponentSchema(ctx context.Context, name
 		return nil, err
 	}
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionViewComponent,
+		Action:       authz.ActionViewComponent,
 		ResourceType: resourceTypeComponent,
 		ResourceID:   componentName,
 		Hierarchy: authz.ResourceHierarchy{
@@ -186,7 +209,7 @@ func (s *componentServiceWithAuthz) GetComponentReleaseSchema(ctx context.Contex
 		return nil, err
 	}
 	if err := s.authz.Check(ctx, services.CheckRequest{
-		Action:       actionViewComponent,
+		Action:       authz.ActionViewComponent,
 		ResourceType: resourceTypeComponent,
 		ResourceID:   componentName,
 		Hierarchy: authz.ResourceHierarchy{

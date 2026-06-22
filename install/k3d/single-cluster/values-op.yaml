@@ -1,9 +1,26 @@
 # Helm values for OpenChoreo Observability Plane in k3d single-cluster setup
 
+finOpsAgent:
+  openchoreoApiUrl: "http://api.openchoreo.localhost:8080"
+  cors:
+    allowedOrigins:
+    - "http://openchoreo.localhost:8080"
+  http:
+    hostnames:
+    - finops-agent.openchoreo.localhost
+
 # Observer API - REST API for querying logs and metrics
 observer:
-  openSearchSecretName: opensearch-admin-credentials
   secretName: observer-secret
+  controlPlaneApiUrl: "http://api.openchoreo.localhost:8080"
+  cors:
+    allowedOrigins:
+    - "http://openchoreo.localhost:8080"
+  extraEnvs:
+  - name: OBSERVER_BASE_URL
+    value: "http://observer.openchoreo.localhost:11080"
+  - name: AUTHZ_TIMEOUT
+    value: "30s"
   http:
     hostnames:
     - observer.openchoreo.localhost
@@ -15,6 +32,10 @@ security:
     authServerBaseUrl: "http://thunder.openchoreo.localhost:8080"
 
 rca:
+  openchoreoApiUrl: "http://api.openchoreo.localhost:8080"
+  cors:
+    allowedOrigins:
+    - "http://openchoreo.localhost:8080"
   http:
     hostnames:
     - rca-agent.openchoreo.localhost

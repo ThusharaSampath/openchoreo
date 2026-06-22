@@ -21,10 +21,13 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
+const DefaultMaxPodLogBytes = 10 * 1024 * 1024 // 10MB
+
 type Config struct {
-	BaseURL string
-	TLS     TLSConfig
-	Timeout time.Duration
+	BaseURL        string
+	TLS            TLSConfig
+	Timeout        time.Duration
+	MaxPodLogBytes int64
 }
 
 type TLSConfig struct {
@@ -32,11 +35,16 @@ type TLSConfig struct {
 	CAFile             string
 	CAData             []byte
 	ServerName         string
+	// ClientCertFile and ClientKeyFile enable mTLS to the cluster gateway.
+	// Both must be set together.
+	ClientCertFile string
+	ClientKeyFile  string
 }
 
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL        string
+	httpClient     *http.Client
+	maxPodLogBytes int64
 }
 
 type PlaneNotification struct {
@@ -154,36 +162,16 @@ func HandleGatewayError(logger interface{ Error(error, string, ...any) }, err er
 	return false, ctrl.Result{}, nil
 }
 
-// NewClient creates a new gateway client with insecure TLS (for local development only)
-// For production use, use NewClientWithConfig with proper TLS configuration
-func NewClient(baseURL string) *Client {
-	// Skip TLS verification for local development
-	// In production, use NewClientWithConfig with proper CA certificates
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			// #nosec G402 -- InsecureSkipVerify is intentional for local development
-			// In production deployments, use NewClientWithConfig with proper CA certificates
-			InsecureSkipVerify: true,
-		},
-	}
-
-	return &Client{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout:   10 * time.Second,
-			Transport: transport,
-		},
-	}
-}
-
-// NewClientWithConfig creates a new gateway client with the provided configuration
-// This should be used for production deployments with proper TLS verification
+// NewClientWithConfig creates a new gateway client with the provided configuration.
+// The server certificate is verified against the system root CA pool by default;
+// set TLSConfig.CAFile or TLSConfig.CAData to pin a custom CA. For development
+// against self-signed gateways, callers may set TLSConfig.InsecureSkipVerify.
 func NewClientWithConfig(config *Config) (*Client, error) {
 	if config.BaseURL == "" {
 		return nil, fmt.Errorf("baseURL is required")
 	}
 
-	tlsConfig, err := buildTLSConfig(&config.TLS)
+	tlsConfig, err := BuildTLSConfig(&config.TLS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build TLS config: %w", err)
 	}
@@ -197,16 +185,22 @@ func NewClientWithConfig(config *Config) (*Client, error) {
 		TLSClientConfig: tlsConfig,
 	}
 
+	maxPodLogBytes := config.MaxPodLogBytes
+	if maxPodLogBytes == 0 {
+		maxPodLogBytes = DefaultMaxPodLogBytes
+	}
+
 	return &Client{
 		baseURL: config.BaseURL,
 		httpClient: &http.Client{
 			Timeout:   timeout,
 			Transport: transport,
 		},
+		maxPodLogBytes: maxPodLogBytes,
 	}, nil
 }
 
-func buildTLSConfig(config *TLSConfig) (*tls.Config, error) {
+func BuildTLSConfig(config *TLSConfig) (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12, // Enforce minimum TLS 1.2
 	}
@@ -218,10 +212,7 @@ func buildTLSConfig(config *TLSConfig) (*tls.Config, error) {
 	if config.InsecureSkipVerify {
 		// #nosec G402 -- InsecureSkipVerify is configurable and should only be used in development
 		tlsConfig.InsecureSkipVerify = true
-		return tlsConfig, nil
-	}
-
-	if config.CAFile != "" || len(config.CAData) > 0 {
+	} else if config.CAFile != "" || len(config.CAData) > 0 {
 		caCertPool := x509.NewCertPool()
 
 		var caData []byte
@@ -241,6 +232,17 @@ func buildTLSConfig(config *TLSConfig) (*tls.Config, error) {
 		}
 
 		tlsConfig.RootCAs = caCertPool
+	}
+
+	if config.ClientCertFile != "" || config.ClientKeyFile != "" {
+		if config.ClientCertFile == "" || config.ClientKeyFile == "" {
+			return nil, fmt.Errorf("both ClientCertFile and ClientKeyFile must be set for mTLS")
+		}
+		cert, err := tls.LoadX509KeyPair(config.ClientCertFile, config.ClientKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client key pair: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
 
 	return tlsConfig, nil
@@ -366,8 +368,6 @@ type PodLogsOptions struct {
 // This method makes direct Kubernetes API calls through the gateway proxy to support
 // advanced log retrieval options like container selection, timestamps, and time filtering
 func (c *Client) GetPodLogsFromPlane(ctx context.Context, planeType, planeID, planeNamespace, planeName string, podReference *PodReference, options *PodLogsOptions) (string, error) {
-	const maxPodLogsBytes = 10 * 1024 * 1024 // 10MB. TODO: Make this configurable.
-
 	if podReference == nil || podReference.Namespace == "" || podReference.Name == "" {
 		return "", fmt.Errorf("pod reference is required and must have namespace and name")
 	}
@@ -413,12 +413,12 @@ func (c *Client) GetPodLogsFromPlane(ctx context.Context, planeType, planeID, pl
 		return "", classifyHTTPError(resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPodLogsBytes+1))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, c.maxPodLogBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
-	if len(body) > maxPodLogsBytes {
-		return "", fmt.Errorf("response body is too large, max is %d bytes", maxPodLogsBytes)
+	if int64(len(body)) > c.maxPodLogBytes {
+		return "", fmt.Errorf("response body is too large, max is %d bytes", c.maxPodLogBytes)
 	}
 
 	return string(body), nil

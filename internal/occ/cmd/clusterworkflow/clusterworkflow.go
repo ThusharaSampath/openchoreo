@@ -20,21 +20,18 @@ import (
 )
 
 // ClusterWorkflow implements cluster workflow operations
-type ClusterWorkflow struct{}
+type ClusterWorkflow struct {
+	client client.Interface
+}
 
 // New creates a new cluster workflow implementation
-func New() *ClusterWorkflow {
-	return &ClusterWorkflow{}
+func New(c client.Interface) *ClusterWorkflow {
+	return &ClusterWorkflow{client: c}
 }
 
 // List lists all cluster-scoped workflows
 func (c *ClusterWorkflow) List() error {
 	ctx := context.Background()
-
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.ClusterWorkflow, string, error) {
 		p := &gen.ListClusterWorkflowsParams{}
@@ -42,7 +39,7 @@ func (c *ClusterWorkflow) List() error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := cl.ListClusterWorkflows(ctx, p)
+		result, err := c.client.ListClusterWorkflows(ctx, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -62,12 +59,7 @@ func (c *ClusterWorkflow) List() error {
 func (c *ClusterWorkflow) Get(params GetParams) error {
 	ctx := context.Background()
 
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := cl.GetClusterWorkflow(ctx, params.ClusterWorkflowName)
+	result, err := c.client.GetClusterWorkflow(ctx, params.ClusterWorkflowName)
 	if err != nil {
 		return err
 	}
@@ -85,12 +77,7 @@ func (c *ClusterWorkflow) Get(params GetParams) error {
 func (c *ClusterWorkflow) Delete(params DeleteParams) error {
 	ctx := context.Background()
 
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := cl.DeleteClusterWorkflow(ctx, params.ClusterWorkflowName); err != nil {
+	if err := c.client.DeleteClusterWorkflow(ctx, params.ClusterWorkflowName); err != nil {
 		return err
 	}
 
@@ -107,7 +94,7 @@ func (c *ClusterWorkflow) StartRun(params StartRunParams) error {
 		return fmt.Errorf("cluster workflow name is required")
 	}
 
-	return workflow.New().StartRun(workflow.StartRunParams{
+	return workflow.New(c.client).StartRun(workflow.StartRunParams{
 		Namespace:    params.Namespace,
 		WorkflowName: params.WorkflowName,
 		WorkflowKind: "ClusterWorkflow",
@@ -127,13 +114,13 @@ func (c *ClusterWorkflow) Logs(params LogsParams) error {
 	runName := params.RunName
 	if runName == "" {
 		var err error
-		runName, err = workflow.ResolveLatestRun(params.Namespace, params.WorkflowName, nil)
+		runName, err = workflow.New(c.client).ResolveLatestRun(params.Namespace, params.WorkflowName, nil)
 		if err != nil {
 			return err
 		}
 	}
 
-	return workflowrun.New().Logs(workflowrun.LogsParams{
+	return workflowrun.New(c.client).Logs(workflowrun.LogsParams{
 		Namespace:       params.Namespace,
 		WorkflowRunName: runName,
 		Follow:          params.Follow,

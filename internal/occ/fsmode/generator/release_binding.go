@@ -4,6 +4,7 @@
 package generator
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -11,6 +12,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/openchoreo/openchoreo/internal/occ/fsmode"
+	"github.com/openchoreo/openchoreo/internal/occ/fsmode/output"
 	"github.com/openchoreo/openchoreo/internal/occ/fsmode/pipeline"
 )
 
@@ -177,13 +179,44 @@ func (g *BindingGenerator) selectComponentRelease(opts BindingOptions) (string, 
 
 	// Check if target env is root environment
 	if opts.PipelineInfo.IsRootEnvironment(opts.TargetEnv) {
-		// Use latest release for this component
-		release, err := g.index.GetLatestReleaseForComponent(opts.ProjectName, opts.ComponentName)
+		// Generate expected release spec from current component state
+		releaseGen := NewReleaseGenerator(g.index)
+		expectedRelease, err := releaseGen.GenerateRelease(ReleaseOptions{
+			ComponentName: opts.ComponentName,
+			ProjectName:   opts.ProjectName,
+			Namespace:     opts.Namespace,
+			ReleaseName:   "temp", // placeholder name, not used for spec comparison
+		})
 		if err != nil {
-			return "", fmt.Errorf("failed to find latest release for component %s/%s: %w",
+			return "", fmt.Errorf("failed to generate release spec for component %s/%s: %w",
 				opts.ProjectName, opts.ComponentName, err)
 		}
-		return release.Name(), nil
+
+		// Find the existing release whose spec matches the current component state
+		releases := g.index.ListReleasesForComponent(opts.ProjectName, opts.ComponentName)
+		if len(releases) == 0 {
+			return "", fmt.Errorf("no releases found for component %s/%s",
+				opts.ProjectName, opts.ComponentName)
+		}
+
+		var compareErrs []error
+		for _, release := range releases {
+			match, err := output.CompareReleaseSpecs(expectedRelease, release.Resource)
+			if err != nil {
+				compareErrs = append(compareErrs, err)
+				continue
+			}
+			if match {
+				return release.Name(), nil
+			}
+		}
+
+		if len(compareErrs) > 0 {
+			return "", fmt.Errorf("comparing release specs for %s/%s: %w",
+				opts.ProjectName, opts.ComponentName, errors.Join(compareErrs...))
+		}
+		return "", fmt.Errorf("no matching release found for current component state %s/%s",
+			opts.ProjectName, opts.ComponentName)
 	}
 
 	// Non-root environment: get release from previous environment's binding

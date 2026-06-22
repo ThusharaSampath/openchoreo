@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go version v1.24.0+
+- Go version v1.26.0+
 - Docker version 23.0+
 - Make version 3.81+
 - Kubernetes cluster with version v1.30.0+
@@ -33,7 +33,7 @@ For testing and development, we recommend using k3d (Kubernetes in Docker). The 
 Before starting, ensure you have:
 - Docker 20.10+
 - k3d 5.8+
-- kubectl 1.32+
+- kubectl 1.36+
 - Helm 3.12+
 
 #### Quick Start Development Workflow

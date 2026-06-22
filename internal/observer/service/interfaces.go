@@ -10,16 +10,25 @@ import (
 	"github.com/openchoreo/openchoreo/internal/observer/types"
 )
 
-// LogsQuerier is the interface for querying logs and scheduled task runs.
-type LogsQuerier interface {
-	QueryLogs(ctx context.Context, req *types.LogsQueryRequest) (*types.LogsQueryResponse, error)
-	QueryRuns(ctx context.Context, req *types.RunsQueryRequest) (*types.RunsQueryResponse, error)
-	QueryRetries(ctx context.Context, jobName string, req *types.RetriesQueryRequest) (*types.RetriesQueryResponse, error)
+// HealthChecker is the interface for checking service health.
+type HealthChecker interface {
+	Check(ctx context.Context) error
 }
 
-// MetricsQuerier is the interface for querying metrics.
+// LogsQuerier is the interface for querying logs.
+type LogsQuerier interface {
+	QueryLogs(ctx context.Context, req *types.LogsQueryRequest) (*types.LogsQueryResponse, error)
+}
+
+// EventsQuerier is the interface for querying Kubernetes events.
+type EventsQuerier interface {
+	QueryEvents(ctx context.Context, req *types.EventsQueryRequest) (*types.EventsQueryResponse, error)
+}
+
+// MetricsQuerier is the interface for querying metrics and runtime topology.
 type MetricsQuerier interface {
 	QueryMetrics(ctx context.Context, req *types.MetricsQueryRequest) (any, error)
+	QueryRuntimeTopology(ctx context.Context, req *types.RuntimeTopologyRequest) (*types.RuntimeTopologyResponse, error)
 }
 
 // TracesQuerier is the interface for querying traces and spans.
@@ -51,4 +60,14 @@ type AlertIncidentService interface {
 	AlertsQuerier
 	IncidentsQuerier
 	IncidentsUpdater
+}
+
+// AlertRuleService is the interface for managing alert rules
+// and processing incoming alert webhooks.
+type AlertRuleService interface {
+	CreateAlertRule(ctx context.Context, req gen.AlertRuleRequest) (*gen.AlertingRuleSyncResponse, error)
+	GetAlertRule(ctx context.Context, ruleName, sourceType string) (*gen.AlertRuleResponse, error)
+	UpdateAlertRule(ctx context.Context, ruleName string, req gen.AlertRuleRequest) (*gen.AlertingRuleSyncResponse, error)
+	DeleteAlertRule(ctx context.Context, ruleName, sourceType string) (*gen.AlertingRuleSyncResponse, error)
+	HandleAlertWebhook(ctx context.Context, req gen.AlertWebhookRequest) (*gen.AlertWebhookResponse, error)
 }

@@ -122,7 +122,10 @@ func platformResourcesYAML(cpNamespace string, environments, projects []string) 
 					"openchoreo.dev/name": proj,
 				},
 			},
-			Spec: openchoreov1alpha1.ProjectSpec{DeploymentPipelineRef: openchoreov1alpha1.DeploymentPipelineRef{Name: "default"}},
+			Spec: openchoreov1alpha1.ProjectSpec{
+				DeploymentPipelineRef: openchoreov1alpha1.DeploymentPipelineRef{Name: "default"},
+				Type:                  openchoreov1alpha1.ProjectTypeRef{Kind: openchoreov1alpha1.ProjectTypeRefKindClusterProjectType, Name: "default"},
+			},
 		})
 	}
 
@@ -175,7 +178,7 @@ func populateConnections(workload *openchoreov1alpha1.Workload, connections []co
 			Project:    conn.project,
 			Component:  conn.component,
 			Name:       conn.endpoint,
-			Visibility: openchoreov1alpha1.EndpointVisibility(conn.visibility),
+			Visibility: conn.visibility,
 			EnvBindings: openchoreov1alpha1.ConnectionEnvBindings{
 				Address: conn.envURL,
 				Host:    conn.envHost,

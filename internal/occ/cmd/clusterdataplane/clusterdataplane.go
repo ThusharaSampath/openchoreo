@@ -18,21 +18,18 @@ import (
 )
 
 // ClusterDataPlane implements cluster data plane operations
-type ClusterDataPlane struct{}
+type ClusterDataPlane struct {
+	client client.Interface
+}
 
 // New creates a new cluster data plane implementation
-func New() *ClusterDataPlane {
-	return &ClusterDataPlane{}
+func New(c client.Interface) *ClusterDataPlane {
+	return &ClusterDataPlane{client: c}
 }
 
 // List lists all cluster-scoped data planes
 func (c *ClusterDataPlane) List() error {
 	ctx := context.Background()
-
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.ClusterDataPlane, string, error) {
 		p := &gen.ListClusterDataPlanesParams{}
@@ -40,7 +37,7 @@ func (c *ClusterDataPlane) List() error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := cl.ListClusterDataPlanes(ctx, p)
+		result, err := c.client.ListClusterDataPlanes(ctx, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -60,12 +57,7 @@ func (c *ClusterDataPlane) List() error {
 func (c *ClusterDataPlane) Get(params GetParams) error {
 	ctx := context.Background()
 
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := cl.GetClusterDataPlane(ctx, params.ClusterDataPlaneName)
+	result, err := c.client.GetClusterDataPlane(ctx, params.ClusterDataPlaneName)
 	if err != nil {
 		return err
 	}
@@ -83,12 +75,7 @@ func (c *ClusterDataPlane) Get(params GetParams) error {
 func (c *ClusterDataPlane) Delete(params DeleteParams) error {
 	ctx := context.Background()
 
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := cl.DeleteClusterDataPlane(ctx, params.ClusterDataPlaneName); err != nil {
+	if err := c.client.DeleteClusterDataPlane(ctx, params.ClusterDataPlaneName); err != nil {
 		return err
 	}
 

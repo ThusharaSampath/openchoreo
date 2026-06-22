@@ -74,6 +74,8 @@ rules:
     - clustercomponenttypes
     - clusterdataplanes
     - clusterobservabilityplanes
+    - clusterprojecttypes
+    - clusterresourcetypes
     - clustertraits
     - clusterworkflowplanes
     - clusterworkflows
@@ -85,8 +87,15 @@ rules:
     - environments
     - observabilityalertsnotificationchannels
     - observabilityplanes
+    - projectreleasebindings
+    - projectreleases
     - projects
+    - projecttypes
     - releasebindings
+    - resourcereleasebindings
+    - resourcereleases
+    - resources
+    - resourcetypes
     - secretreferences
     - traits
     - workflowplanes
@@ -107,6 +116,8 @@ rules:
     - clustercomponenttypes/finalizers
     - clusterdataplanes/finalizers
     - clusterobservabilityplanes/finalizers
+    - clusterprojecttypes/finalizers
+    - clusterresourcetypes/finalizers
     - clustertraits/finalizers
     - clusterworkflowplanes/finalizers
     - clusterworkflows/finalizers
@@ -118,9 +129,16 @@ rules:
     - environments/finalizers
     - observabilityalertsnotificationchannels/finalizers
     - observabilityplanes/finalizers
+    - projectreleasebindings/finalizers
+    - projectreleases/finalizers
     - projects/finalizers
+    - projecttypes/finalizers
     - releasebindings/finalizers
     - renderedreleases/finalizers
+    - resourcereleasebindings/finalizers
+    - resourcereleases/finalizers
+    - resources/finalizers
+    - resourcetypes/finalizers
     - secretreferences/finalizers
     - traits/finalizers
     - workflowplanes/finalizers
@@ -135,6 +153,8 @@ rules:
     - clustercomponenttypes/status
     - clusterdataplanes/status
     - clusterobservabilityplanes/status
+    - clusterprojecttypes/status
+    - clusterresourcetypes/status
     - clustertraits/status
     - clusterworkflowplanes/status
     - clusterworkflows/status
@@ -146,9 +166,16 @@ rules:
     - environments/status
     - observabilityalertsnotificationchannels/status
     - observabilityplanes/status
+    - projectreleasebindings/status
+    - projectreleases/status
     - projects/status
+    - projecttypes/status
     - releasebindings/status
     - renderedreleases/status
+    - resourcereleasebindings/status
+    - resourcereleases/status
+    - resources/status
+    - resourcetypes/status
     - secretreferences/status
     - traits/status
     - workflowplanes/status

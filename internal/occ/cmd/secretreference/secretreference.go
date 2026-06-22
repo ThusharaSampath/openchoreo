@@ -13,31 +13,28 @@ import (
 
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/pagination"
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/utils"
+	"github.com/openchoreo/openchoreo/internal/occ/cmdutil"
 	"github.com/openchoreo/openchoreo/internal/occ/resources/client"
-	"github.com/openchoreo/openchoreo/internal/occ/validation"
 	"github.com/openchoreo/openchoreo/internal/openchoreo-api/api/gen"
 )
 
 // SecretReference implements secret reference operations
-type SecretReference struct{}
+type SecretReference struct {
+	client client.Interface
+}
 
 // New creates a new secret reference implementation
-func New() *SecretReference {
-	return &SecretReference{}
+func New(c client.Interface) *SecretReference {
+	return &SecretReference{client: c}
 }
 
 // List lists all secret references in a namespace
 func (s *SecretReference) List(params ListParams) error {
-	if err := validation.ValidateParams(validation.CmdList, validation.ResourceSecretReference, params); err != nil {
+	if err := cmdutil.RequireFields("list", "secretreference", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.SecretReference, string, error) {
 		p := &gen.ListSecretReferencesParams{}
@@ -45,7 +42,7 @@ func (s *SecretReference) List(params ListParams) error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := c.ListSecretReferences(ctx, params.Namespace, p)
+		result, err := s.client.ListSecretReferences(ctx, params.Namespace, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -63,17 +60,12 @@ func (s *SecretReference) List(params ListParams) error {
 
 // Get retrieves a single secret reference and outputs it as YAML
 func (s *SecretReference) Get(params GetParams) error {
-	if err := validation.ValidateParams(validation.CmdGet, validation.ResourceSecretReference, params); err != nil {
+	if err := cmdutil.RequireFields("get", "secretreference", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := c.GetSecretReference(ctx, params.Namespace, params.SecretReferenceName)
+	result, err := s.client.GetSecretReference(ctx, params.Namespace, params.SecretReferenceName)
 	if err != nil {
 		return err
 	}
@@ -89,17 +81,12 @@ func (s *SecretReference) Get(params GetParams) error {
 
 // Delete deletes a single secret reference
 func (s *SecretReference) Delete(params DeleteParams) error {
-	if err := validation.ValidateParams(validation.CmdDelete, validation.ResourceSecretReference, params); err != nil {
+	if err := cmdutil.RequireFields("delete", "secretreference", map[string]string{"namespace": params.Namespace, "name": params.SecretReferenceName}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := c.DeleteSecretReference(ctx, params.Namespace, params.SecretReferenceName); err != nil {
+	if err := s.client.DeleteSecretReference(ctx, params.Namespace, params.SecretReferenceName); err != nil {
 		return err
 	}
 

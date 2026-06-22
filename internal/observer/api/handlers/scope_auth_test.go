@@ -8,7 +8,6 @@ package handlers
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,47 +17,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openchoreo/openchoreo/internal/observer/service"
+	servicemocks "github.com/openchoreo/openchoreo/internal/observer/service/mocks"
 	"github.com/openchoreo/openchoreo/internal/observer/types"
 )
-
-// ---- fake services returning ErrScopeAuthFailed --------------------------------
-
-type fakeScopeAuthFailedLogsService struct{}
-
-func (f *fakeScopeAuthFailedLogsService) QueryLogs(_ context.Context, _ *types.LogsQueryRequest) (*types.LogsQueryResponse, error) {
-	return nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed)
-}
-
-func (f *fakeScopeAuthFailedLogsService) QueryRuns(_ context.Context, _ *types.RunsQueryRequest) (*types.RunsQueryResponse, error) {
-	return nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed)
-}
-
-func (f *fakeScopeAuthFailedLogsService) QueryRetries(_ context.Context, _ string, _ *types.RetriesQueryRequest) (*types.RetriesQueryResponse, error) {
-	return nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed)
-}
-
-type fakeScopeAuthFailedMetricsService struct{}
-
-func (f *fakeScopeAuthFailedMetricsService) QueryMetrics(_ context.Context, _ *types.MetricsQueryRequest) (any, error) {
-	return nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed)
-}
-
-type fakeScopeAuthFailedTracesService struct{}
-
-func (f *fakeScopeAuthFailedTracesService) QueryTraces(_ context.Context, _ *types.TracesQueryRequest) (*types.TracesQueryResponse, error) {
-	return nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed)
-}
-
-func (f *fakeScopeAuthFailedTracesService) QuerySpans(_ context.Context, _ string, _ *types.TracesQueryRequest) (*types.SpansQueryResponse, error) {
-	return nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed)
-}
-
-func (f *fakeScopeAuthFailedTracesService) GetSpanDetails(_ context.Context, _, _ string) (*types.SpanInfo, error) {
-	return nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed)
-}
 
 // ---- helpers -------------------------------------------------------------------
 
@@ -113,6 +78,24 @@ func validTracesRequestBody(t *testing.T) io.Reader {
 	return bytes.NewReader(b)
 }
 
+// validRuntimeTopologyRequestBody returns a minimal valid runtime topology request JSON.
+func validRuntimeTopologyRequestBody(t *testing.T) io.Reader {
+	t.Helper()
+	now := time.Now().UTC()
+	req := map[string]any{
+		"startTime": now.Add(-1 * time.Hour).Format(time.RFC3339),
+		"endTime":   now.Format(time.RFC3339),
+		"searchScope": map[string]any{
+			"namespace":   "test-ns",
+			"project":     "test-project",
+			"environment": "test-env",
+		},
+	}
+	b, err := json.Marshal(req)
+	require.NoError(t, err, "failed to marshal runtime topology request")
+	return bytes.NewReader(b)
+}
+
 // assertScopeAuthFailedResponse checks that the response is HTTP 500 with the
 // OBS-V1-SCOPE-AUTH-FAILED error code.
 func assertScopeAuthFailedResponse(t *testing.T, rr *httptest.ResponseRecorder) {
@@ -134,9 +117,12 @@ func assertScopeAuthFailedResponse(t *testing.T, rr *httptest.ResponseRecorder) 
 func TestQueryLogs_ScopeAuthFailed_Returns500WithCode(t *testing.T) {
 	t.Parallel()
 
+	svc := servicemocks.NewMockLogsQuerier(t)
+	svc.On("QueryLogs", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed))
+
 	h := &Handler{
 		baseHandler: baseHandler{logger: noopLogger()},
-		logsService: &fakeScopeAuthFailedLogsService{},
+		logsService: svc,
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/logs/query", validLogsRequestBody(t))
@@ -150,9 +136,12 @@ func TestQueryLogs_ScopeAuthFailed_Returns500WithCode(t *testing.T) {
 func TestQueryMetrics_ScopeAuthFailed_Returns500WithCode(t *testing.T) {
 	t.Parallel()
 
+	svc := servicemocks.NewMockMetricsQuerier(t)
+	svc.On("QueryMetrics", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed))
+
 	h := &Handler{
 		baseHandler:    baseHandler{logger: noopLogger()},
-		metricsService: &fakeScopeAuthFailedMetricsService{},
+		metricsService: svc,
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/metrics/query", validMetricsRequestBody(t))
@@ -166,9 +155,12 @@ func TestQueryMetrics_ScopeAuthFailed_Returns500WithCode(t *testing.T) {
 func TestQueryTraces_ScopeAuthFailed_Returns500WithCode(t *testing.T) {
 	t.Parallel()
 
+	svc := servicemocks.NewMockTracesQuerier(t)
+	svc.On("QueryTraces", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed))
+
 	h := &Handler{
 		baseHandler:   baseHandler{logger: noopLogger()},
-		tracesService: &fakeScopeAuthFailedTracesService{},
+		tracesService: svc,
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1alpha1/traces/query", validTracesRequestBody(t))
@@ -182,9 +174,12 @@ func TestQueryTraces_ScopeAuthFailed_Returns500WithCode(t *testing.T) {
 func TestQuerySpans_ScopeAuthFailed_Returns500WithCode(t *testing.T) {
 	t.Parallel()
 
+	svc := servicemocks.NewMockTracesQuerier(t)
+	svc.On("QuerySpans", mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed))
+
 	h := &Handler{
 		baseHandler:   baseHandler{logger: noopLogger()},
-		tracesService: &fakeScopeAuthFailedTracesService{},
+		tracesService: svc,
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1alpha1/traces/trace-1/spans/query", validTracesRequestBody(t))
@@ -199,9 +194,12 @@ func TestQuerySpans_ScopeAuthFailed_Returns500WithCode(t *testing.T) {
 func TestGetSpanDetails_ScopeAuthFailed_Returns500WithCode(t *testing.T) {
 	t.Parallel()
 
+	svc := servicemocks.NewMockTracesQuerier(t)
+	svc.On("GetSpanDetails", mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("%w: token expired after idle", service.ErrScopeAuthFailed))
+
 	h := &Handler{
 		baseHandler:   baseHandler{logger: noopLogger()},
-		tracesService: &fakeScopeAuthFailedTracesService{},
+		tracesService: svc,
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1alpha1/traces/trace-1/spans/span-1", nil)

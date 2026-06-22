@@ -13,31 +13,28 @@ import (
 
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/pagination"
 	"github.com/openchoreo/openchoreo/internal/occ/cmd/utils"
+	"github.com/openchoreo/openchoreo/internal/occ/cmdutil"
 	"github.com/openchoreo/openchoreo/internal/occ/resources/client"
-	"github.com/openchoreo/openchoreo/internal/occ/validation"
 	"github.com/openchoreo/openchoreo/internal/openchoreo-api/api/gen"
 )
 
 // Project implements project operations
-type Project struct{}
+type Project struct {
+	client client.Interface
+}
 
 // New creates a new project implementation
-func New() *Project {
-	return &Project{}
+func New(c client.Interface) *Project {
+	return &Project{client: c}
 }
 
 // List lists all projects in a namespace
 func (l *Project) List(params ListParams) error {
-	if err := validation.ValidateParams(validation.CmdList, validation.ResourceProject, params); err != nil {
+	if err := cmdutil.RequireFields("list", "project", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.Project, string, error) {
 		p := &gen.ListProjectsParams{}
@@ -45,7 +42,7 @@ func (l *Project) List(params ListParams) error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := c.ListProjects(ctx, params.Namespace, p)
+		result, err := l.client.ListProjects(ctx, params.Namespace, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -64,18 +61,13 @@ func (l *Project) List(params ListParams) error {
 
 // Get retrieves a single project and outputs it as YAML
 func (l *Project) Get(params GetParams) error {
-	if err := validation.ValidateParams(validation.CmdGet, validation.ResourceProject, params); err != nil {
+	if err := cmdutil.RequireFields("get", "project", map[string]string{"namespace": params.Namespace}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := c.GetProject(ctx, params.Namespace, params.ProjectName)
+	result, err := l.client.GetProject(ctx, params.Namespace, params.ProjectName)
 	if err != nil {
 		return err
 	}
@@ -91,18 +83,13 @@ func (l *Project) Get(params GetParams) error {
 
 // Delete deletes a single project
 func (l *Project) Delete(params DeleteParams) error {
-	if err := validation.ValidateParams(validation.CmdDelete, validation.ResourceProject, params); err != nil {
+	if err := cmdutil.RequireFields("delete", "project", map[string]string{"namespace": params.Namespace, "name": params.ProjectName}); err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 
-	c, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := c.DeleteProject(ctx, params.Namespace, params.ProjectName); err != nil {
+	if err := l.client.DeleteProject(ctx, params.Namespace, params.ProjectName); err != nil {
 		return err
 	}
 

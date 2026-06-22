@@ -18,21 +18,18 @@ import (
 )
 
 // ClusterAuthzRole implements authz cluster role operations
-type ClusterAuthzRole struct{}
+type ClusterAuthzRole struct {
+	client client.Interface
+}
 
 // New creates a new authz cluster role implementation
-func New() *ClusterAuthzRole {
-	return &ClusterAuthzRole{}
+func New(c client.Interface) *ClusterAuthzRole {
+	return &ClusterAuthzRole{client: c}
 }
 
 // List lists all cluster-scoped authorization roles
 func (c *ClusterAuthzRole) List() error {
 	ctx := context.Background()
-
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
 
 	items, err := pagination.FetchAll(func(limit int, cursor string) ([]gen.ClusterAuthzRole, string, error) {
 		p := &gen.ListClusterRolesParams{}
@@ -40,7 +37,7 @@ func (c *ClusterAuthzRole) List() error {
 		if cursor != "" {
 			p.Cursor = &cursor
 		}
-		result, err := cl.ListClusterRoles(ctx, p)
+		result, err := c.client.ListClusterRoles(ctx, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -60,12 +57,7 @@ func (c *ClusterAuthzRole) List() error {
 func (c *ClusterAuthzRole) Get(params GetParams) error {
 	ctx := context.Background()
 
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	result, err := cl.GetClusterRole(ctx, params.Name)
+	result, err := c.client.GetClusterRole(ctx, params.Name)
 	if err != nil {
 		return fmt.Errorf("failed to get authz cluster role: %w", err)
 	}
@@ -83,12 +75,7 @@ func (c *ClusterAuthzRole) Get(params GetParams) error {
 func (c *ClusterAuthzRole) Delete(params DeleteParams) error {
 	ctx := context.Background()
 
-	cl, err := client.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
-	}
-
-	if err := cl.DeleteClusterRole(ctx, params.Name); err != nil {
+	if err := c.client.DeleteClusterRole(ctx, params.Name); err != nil {
 		return fmt.Errorf("failed to delete authz cluster role: %w", err)
 	}
 

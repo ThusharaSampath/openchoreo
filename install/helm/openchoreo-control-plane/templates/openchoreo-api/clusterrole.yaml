@@ -21,6 +21,8 @@ rules:
   - clusterworkflowplanes
   - clustercomponenttypes
   - clusterdataplanes
+  - clusterprojecttypes
+  - clusterresourcetypes
   - clustertraits
   - clusterobservabilityplanes
   - clustertraits
@@ -38,8 +40,15 @@ rules:
   - observabilityalertsnotificationchannels
   - observabilityplanes
   - projects
+  - projecttypes
+  - projectreleases
+  - projectreleasebindings
   - releasebindings
   - renderedreleases
+  - resources
+  - resourcereleases
+  - resourcereleasebindings
+  - resourcetypes
   - scheduledtaskbindings
   - scheduledtaskclasses
   - scheduledtasks
@@ -101,8 +110,15 @@ rules:
   - observabilityalertsnotificationchannels/status
   - observabilityplanes/status
   - projects/status
+  - projecttypes/status
+  - projectreleases/status
+  - projectreleasebindings/status
   - releasebindings/status
   - renderedreleases/status
+  - resources/status
+  - resourcereleases/status
+  - resourcereleasebindings/status
+  - resourcetypes/status
   - scheduledtaskbindings/status
   - scheduledtaskclasses/status
   - scheduledtasks/status
