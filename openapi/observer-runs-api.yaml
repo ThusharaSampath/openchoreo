@@ -1,7 +1,10 @@
 openapi: 3.0.3
 info:
   title: OpenChoreo Observer - Run-Based Logs API
-  description: API for querying scheduled task runs (Jobs) and retries (Pods) from the kube-events index.
+  description: |
+    API for querying scheduled task runs (Jobs) and retries (Pods).
+    Events are fetched from the upstream observability logs adapter and grouped
+    by involved-object kind in the observer service.
   version: 1.0.0
 
 servers:
@@ -17,7 +20,8 @@ paths:
       summary: List runs (Jobs) for a scheduled task component
       description: |
         Returns a list of CronJob runs (Jobs) with derived status, event counts,
-        and individual events. Results are grouped by Job name using OpenSearch aggregations.
+        and (optionally) individual events. The observer queries Kubernetes events
+        for the component from the logs adapter and groups them by Job name in-memory.
       requestBody:
         required: true
         content:
@@ -379,6 +383,20 @@ components:
       properties:
         searchScope:
           $ref: '#/components/schemas/ComponentSearchScope'
+        startTime:
+          type: string
+          format: date-time
+          description: |
+            Optional. RFC3339 lower bound on the event window used to find the run's retries.
+            When provided alongside endTime, narrows the adapter query to the run's lifetime,
+            avoiding truncation by the adapter's per-call event cap for high-frequency CronJobs.
+            When omitted, a 30-day lookback ending at now is used.
+          example: '2026-06-22T05:00:00Z'
+        endTime:
+          type: string
+          format: date-time
+          description: Optional. RFC3339 upper bound on the event window. See startTime.
+          example: '2026-06-22T07:30:00Z'
 
     RetriesQueryResponse:
       type: object

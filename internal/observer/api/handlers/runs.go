@@ -31,12 +31,12 @@ func (h *Handler) QueryRuns(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if h.logsService == nil {
-		h.writeErrorResponse(w, http.StatusInternalServerError, gen.InternalServerError, "", "Logs service is not initialized")
+	if h.runsService == nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, gen.InternalServerError, "", "Runs service is not initialized")
 		return
 	}
 
-	result, err := h.logsService.QueryRuns(ctx, &req)
+	result, err := h.runsService.QueryRuns(ctx, &req)
 	if err != nil {
 		if errors.Is(err, observerAuthz.ErrAuthzForbidden) {
 			h.writeErrorResponse(w, http.StatusForbidden, gen.Forbidden, "", "Access denied")
@@ -47,7 +47,7 @@ func (h *Handler) QueryRuns(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.logger.Error("Failed to query runs", "error", err)
-		if errors.Is(err, service.ErrLogsResolveSearchScope) {
+		if errors.Is(err, service.ErrRunsResolveSearchScope) {
 			h.writeErrorResponse(w, http.StatusInternalServerError, gen.InternalServerError, types.ErrorCodeV1LogsResolverFailed, "Failed to resolve search scope")
 			return
 		}
@@ -79,12 +79,12 @@ func (h *Handler) QueryRetries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if h.logsService == nil {
-		h.writeErrorResponse(w, http.StatusInternalServerError, gen.InternalServerError, "", "Logs service is not initialized")
+	if h.runsService == nil {
+		h.writeErrorResponse(w, http.StatusInternalServerError, gen.InternalServerError, "", "Runs service is not initialized")
 		return
 	}
 
-	result, err := h.logsService.QueryRetries(ctx, jobName, &req)
+	result, err := h.runsService.QueryRetries(ctx, jobName, &req)
 	if err != nil {
 		if errors.Is(err, observerAuthz.ErrAuthzForbidden) {
 			h.writeErrorResponse(w, http.StatusForbidden, gen.Forbidden, "", "Access denied")
@@ -95,6 +95,10 @@ func (h *Handler) QueryRetries(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.logger.Error("Failed to query retries", "error", err)
+		if errors.Is(err, service.ErrRunsResolveSearchScope) {
+			h.writeErrorResponse(w, http.StatusInternalServerError, gen.InternalServerError, types.ErrorCodeV1LogsResolverFailed, "Failed to resolve search scope")
+			return
+		}
 		h.writeErrorResponse(w, http.StatusInternalServerError, gen.InternalServerError, "", "Failed to retrieve retries")
 		return
 	}

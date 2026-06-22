@@ -59,8 +59,13 @@ type RunsQueryResponse struct {
 }
 
 // RetriesQueryRequest represents the request for listing retries (Pods) of a specific run.
+// Optional StartTime / EndTime narrow the event-fetch window to the run's lifetime,
+// avoiding truncation by the adapter's per-call event cap for high-frequency CronJobs.
+// When omitted, a wide 30-day window is used.
 type RetriesQueryRequest struct {
 	SearchScope *ComponentSearchScope `json:"searchScope" validate:"required"`
+	StartTime   string                `json:"startTime,omitempty"`
+	EndTime     string                `json:"endTime,omitempty"`
 }
 
 // RetryEvent represents a single event within a retry.
